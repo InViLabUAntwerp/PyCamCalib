@@ -6,6 +6,7 @@ from typing import Tuple
 import cv2
 import numpy as np
 import csv
+import h5py
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.core.exceptions import ImageError, CalibrationError
 from camera_calibration_toolbox.core.feature_detection import FeatureDetector
@@ -159,7 +160,6 @@ class CameraCalibrator:
         self.per_view_err = np.squeeze(per_view_err)
         dist_coeffs = np.squeeze(dist_coeffs)
         intrinsics_std = np.squeeze(intrinsics_std)
-        extrinsics_std = np.squeeze(extrinsics_std)
 
         calibration_parameters = CalibrationParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs,
@@ -174,83 +174,68 @@ class CalibrationParameters:
 
     def __init__(self) -> None:
         """Class constructor."""
-        self.fx = float(0)
-        """x focal length in pixels."""
+        self.f = None
+        """Focal length in pixels (x, y)."""
 
-        self.fy = float(0)
-        """y focal length in pixels."""
+        self.f_std = None
+        """Standard deviation of focal length (x, y)."""
 
-        self.cx = float(0)
-        """x-coordinate of principal point in pixels."""
+        self.c = None
+        """Principal point in pixels (x, y)."""
 
-        self.cy = float(0)
-        """y-coordinate of principal point in pixels."""
+        self.c_std = None
+        """Standard deviation of principal point (x, y)."""
 
-        self.s = float(0)
+        self.s = None
         """Skew."""
 
-        self.fx_std = float(0)
-        """Standard deviation of x focal length."""
-
-        self.fy_std = float(0)
-        """Standard deviation of y focal length."""
-
-        self.cx_std = float(0)
-        """Standard deviation of x-coordinate of principal point."""
-
-        self.cy_std = float(0)
-        """Standard deviation of y-coordinate of principal point."""
-
-        self.s_std = float(0)
+        self.s_std = None
         """Standard deviation of skew."""
 
-        self.radial_dist_coeffs = np.zeros(3)
+        self.radial_dist_coeffs = None
         """Radial distortion coefficients."""
 
-        self.tangential_dist_coeffs = np.zeros(2)
-        """Tangential distortion coefficients."""
-
-        self.radial_dist_coeffs_std = np.zeros(3)
+        self.radial_dist_coeffs_std = None
         """Standard deviations of radial distortion coefficients."""
 
-        self.tangential_dist_coeffs_std = np.zeros(2)
+        self.tangential_dist_coeffs = None
+        """Tangential distortion coefficients."""
+
+        self.tangential_dist_coeffs_std = None
         """Standard deviations of tangential distortion coefficients."""
 
-        self.r_vecs = np.array([])
+        self.r_vecs = None
         """Rotation vectors for each image."""
 
-        self.t_vecs = np.array([])
+        self.t_vecs = None
         """Translation vectors for each image."""
 
-        self.extrinsics_std = np.array([])
+        self.extrinsics_std = None
         """Standard deviations for extrinsic parameters."""
 
-        self.rms_reproj_error = float(0)
+        self.rms_reproj_error = None
         """Overall rms re-projection error."""
 
-        self.per_view_err = np.array([])
+        self.per_view_err = None
         """Array of the re-projection error per image."""
 
-        self.width = 0
-        """Sensor width in pixels."""
+        self.sensor_dimensions = None
+        """Sensor dimensions in pixels (w, h)."""
 
-        self.height = 0
-        """Sensor height in pixels."""
-
-    def get_sensor_dimensions(self) -> Tuple[int, int]:
+    def get_sensor_dimensions(self) -> Tuple[np.int32, np.int32]:
         """Get the camera sensor dimensions in pixels.
 
         :returns: A tuple with the sensor width and height in pixels.
         """
-        return self.width, self.height
+        return self.sensor_dimensions[0], self.sensor_dimensions[1]
 
-    def get_afov(self) -> Tuple[float, float]:
+    def get_afov(self) -> Tuple[np.float64, np.float64]:
         """Get the angular field of view in degrees.
 
         :returns: A tuple with the horizontal and vertical angular field of view in degrees.
         """
-        h_afov = np.rad2deg(2 * np.arctan2(self.width, 2 * self.fx))
-        v_afov = np.rad2deg(2 * np.arctan2(self.height, 2 * self.fy))
+        h_afov = np.rad2deg(2 * np.arctan2(self.sensor_dimensions[0], 2 * self.f[0]))
+        v_afov = np.rad2deg(2 * np.arctan2(self.sensor_dimensions[1], 2 * self.f[1]))
 
         return h_afov, v_afov
 
@@ -259,7 +244,7 @@ class CalibrationParameters:
 
         :returns: A 3x3 array with the intrinsic camera parameters in OpenCV format.
         """
-        intrinsics_matrix = np.array([[self.fx, 0, self.cx], [0, self.fy, self.cy], [0, 0, 1]])
+        intrinsics_matrix = np.array([[self.f[0], 0, self.c[0]], [0, self.f[1], self.c[1]], [0, 0, 1]])
 
         return intrinsics_matrix
 
@@ -283,7 +268,7 @@ class CalibrationParameters:
         """
         intrinsics_matrix = self.get_intrinsics_matrix_opencv()
         distortion_coeffs = self.get_distortion_coeffs_opencv()
-        dimensions = (self.width, self.height)
+        dimensions = self.get_sensor_dimensions()
         new_intrinsics_matrix, roi = cv2.getOptimalNewCameraMatrix(intrinsics_matrix, distortion_coeffs, dimensions,
                                                                    alpha)
         map_x, map_y = cv2.initUndistortRectifyMap(intrinsics_matrix, distortion_coeffs, None, new_intrinsics_matrix,
@@ -297,87 +282,101 @@ class CalibrationParameters:
                               r_vecs: npt.NDArray, t_vecs: npt.NDArray, intrinsics_std: npt.NDArray,
                               extrinsics_std: npt.NDArray, per_view_err: npt.NDArray, width: int, height: int) -> None:
         """Save parameters from opencv calibration to object."""
-        self.fx = intrinsics_matrix[0, 0]
-        self.fy = intrinsics_matrix[1, 1]
-        self.cx = intrinsics_matrix[0, 2]
-        self.cy = intrinsics_matrix[1, 2]
-        self.s = float(0)
-        self.fx_std = intrinsics_std[0]
-        self.fy_std = intrinsics_std[1]
-        self.cx_std = intrinsics_std[2]
-        self.cy_std = intrinsics_std[3]
-        self.s_std = float(0)
-        self.rms_reproj_error = rms_reproj_error
-        self.radial_dist_coeffs[0] = dist_coeffs[0]
-        self.radial_dist_coeffs[1] = dist_coeffs[1]
-        self.radial_dist_coeffs[2] = dist_coeffs[4]
-        self.tangential_dist_coeffs[0] = dist_coeffs[2]
-        self.tangential_dist_coeffs[0] = dist_coeffs[3]
-        self.radial_dist_coeffs_std[0] = intrinsics_std[4]
-        self.radial_dist_coeffs_std[0] = intrinsics_std[5]
-        self.radial_dist_coeffs_std[0] = intrinsics_std[8]
-        self.tangential_dist_coeffs_std[0] = intrinsics_std[6]
-        self.tangential_dist_coeffs_std[0] = intrinsics_std[7]
+        self.f = np.array([intrinsics_matrix[0, 0], intrinsics_matrix[1, 1]])
+        self.f_std = np.array([intrinsics_std[0], intrinsics_std[1]])
+        self.c = np.array([intrinsics_matrix[0, 2], intrinsics_matrix[1, 2]])
+        self.c_std = np.array([intrinsics_std[2], intrinsics_std[3]])
+        self.s = np.int32(0)
+        self.s_std = np.int32(0)
+        self.radial_dist_coeffs = np.array([dist_coeffs[0], dist_coeffs[1], dist_coeffs[2]])
+        self.radial_dist_coeffs_std = np.array([intrinsics_std[4], intrinsics_std[5], intrinsics_std[8]])
+        self.tangential_dist_coeffs = np.array([dist_coeffs[2], dist_coeffs[3]])
+        self.tangential_dist_coeffs_std = np.array([intrinsics_std[6], intrinsics_std[7]])
         self.r_vecs = r_vecs
         self.t_vecs = t_vecs
         self.extrinsics_std = extrinsics_std
+        self.rms_reproj_error = rms_reproj_error
         self.per_view_err = per_view_err
-        self.width = width
-        self.height = height
+        self.sensor_dimensions = np.array([width, height])
 
-    def load_parameters_csv(self, full_path: str) -> None:
-        """Load calibration parameters from .csv file into object.
+    def load_parameters(self, full_path: str) -> None:
+        """Load calibration parameters from .h5 file into object.
 
-        :param full_path: The full path to the .csv file that contains the calibration parameters.
+        :param full_path: Full filepath with directory and filename.
+        :raises KeyError: If there are no calibration parameters in the h5 file.
+        :raises OSError: If the path contains forbidden characters or an incompatible file is used.
         :raises FileNotFoundError: If specified file does not exist.
         """
-        with open(full_path, newline='') as file:
-            reader = csv.reader(file, delimiter=',', quotechar='|')
-            next(reader)  # skip header row
-            row = next(reader)
-            self.fx = float(row[0])
-            self.fy = float(row[1])
-            self.cx = float(row[2])
-            self.cy = float(row[3])
-            self.s = float(row[4])
-            self.fx_std = float(row[5])
-            self.fy_std = float(row[6])
-            self.cx_std = float(row[7])
-            self.cy_std = float(row[8])
-            self.s_std = float(row[9])
-            self.rms_reproj_error = float(row[10])
-            self.radial_dist_coeffs[0] = float(row[11])
-            self.radial_dist_coeffs[1] = float(row[12])
-            self.radial_dist_coeffs[2] = float(row[13])
-            self.tangential_dist_coeffs[0] = float(row[14])
-            self.tangential_dist_coeffs[1] = float(row[15])
-            self.radial_dist_coeffs_std[0] = float(row[16])
-            self.radial_dist_coeffs_std[1] = float(row[17])
-            self.radial_dist_coeffs_std[2] = float(row[18])
-            self.tangential_dist_coeffs_std[0] = float(row[19])
-            self.tangential_dist_coeffs_std[1] = float(row[20])
-            self.width = int(row[21])
-            self.height = int(row[22])
+        with h5py.File(full_path, "r") as file:
+            try:
+                self.f = file["geometric_calibration/f"][()]
+                self.f_std = file["geometric_calibration/f_std"][()]
+                self.c = file["geometric_calibration/c"][()]
+                self.c_std = file["geometric_calibration/c_std"][()]
+                self.s = file["geometric_calibration/s"][()]
+                self.s_std = file["geometric_calibration/s_std"][()]
+                self.radial_dist_coeffs = file["geometric_calibration/radial_dist_coeffs"][()]
+                self.radial_dist_coeffs_std = file["geometric_calibration/radial_dist_coeffs_std"][()]
+                self.tangential_dist_coeffs = file["geometric_calibration/tangential_dist_coeffs"][()]
+                self.tangential_dist_coeffs_std = file["geometric_calibration/tangential_dist_coeffs_std"][()]
+                self.r_vecs = file["geometric_calibration/r_vecs"][()]
+                self.t_vecs = file["geometric_calibration/t_vecs"][()]
+                self.extrinsics_std = file["geometric_calibration/extrinsics_std"][()]
+                self.per_view_err = file["geometric_calibration/per_view_err"][()]
+                self.rms_reproj_error = file["geometric_calibration/rms_reproj_err"][()]
+                self.sensor_dimensions = file["geometric_calibration/sensor_dimensions"][()]
+            except KeyError as e:
+                raise KeyError("File does not contain calibration parameters.") from e
 
-    def save_parameters_csv(self, full_path: str) -> None:
-        """Save calibration parameters to .csv file
+    def save_parameters(self, full_path: str) -> None:
+        """Save calibration parameters to .h5 file
 
-        :raises OSError: If the path contains forbidden characters.
+        If the file specified in `full_path` does not exist, a new file will be created. If the file already exists,
+        the parameters will be added to the specified file. If the file already exists and it already has calibration
+        parameters, these parameters will be overwritten.
+
+        :param full_path: Full filepath with directory and filename.
+        :raises TypeError: If this instance of :py:class:`CalibrationParameters` does not contain any parameters.
+        :raises OSError: If the path contains forbidden characters or the selected file is not compatible.
         :raises FileNotFoundError: If the specified directory does not exist.
         """
-        header = ['fx', 'fy', 'cx', 'cy', 's', 'fx_std', 'fy_std', 'cx_std', 'cy_std', 's_std', 'rms_reproj_error',
-                  'k1', 'k2', 'k3', 'p1', 'p2', 'k1_std', 'k2_std', 'k3_std', 'p1_std', 'p2_std', 'width', 'height']
-
-        row = (self.fx, self.fy, self.cx, self.cy, self.s, self.fx_std, self.fy_std, self.cx_std, self.cy_std,
-               self.s_std, self.rms_reproj_error, self.radial_dist_coeffs[0], self.radial_dist_coeffs[1],
-               self.radial_dist_coeffs[2], self.tangential_dist_coeffs[0], self.tangential_dist_coeffs[1],
-               self.radial_dist_coeffs_std[0], self.radial_dist_coeffs_std[1], self.radial_dist_coeffs_std[2],
-               self.tangential_dist_coeffs_std[0], self.tangential_dist_coeffs_std[1], self.width, self.height)
-
-        with open(full_path, 'w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(header)
-            writer.writerow(row)
+        with h5py.File(full_path, "a") as file:
+            try:
+                file.create_dataset("geometric_calibration/f", data=self.f)
+                file.create_dataset("geometric_calibration/f_std", data=self.f_std)
+                file.create_dataset("geometric_calibration/c", data=self.c)
+                file.create_dataset("geometric_calibration/c_std", data=self.c_std)
+                file.create_dataset("geometric_calibration/s", data=self.s)
+                file.create_dataset("geometric_calibration/s_std", data=self.s_std)
+                file.create_dataset("geometric_calibration/radial_dist_coeffs", data=self.radial_dist_coeffs)
+                file.create_dataset("geometric_calibration/radial_dist_coeffs_std", data=self.radial_dist_coeffs_std)
+                file.create_dataset("geometric_calibration/tangential_dist_coeffs", data=self.tangential_dist_coeffs)
+                file.create_dataset("geometric_calibration/tangential_dist_coeffs_std", data=self.tangential_dist_coeffs_std)
+                file.create_dataset("geometric_calibration/r_vecs", data=self.r_vecs)
+                file.create_dataset("geometric_calibration/t_vecs", data=self.t_vecs)
+                file.create_dataset("geometric_calibration/extrinsics_std", data=self.extrinsics_std)
+                file.create_dataset("geometric_calibration/per_view_err", data=self.per_view_err)
+                file.create_dataset("geometric_calibration/rms_reproj_err", data=self.rms_reproj_error)
+                file.create_dataset("geometric_calibration/sensor_dimensions", data=self.sensor_dimensions)
+            except ValueError:
+                file["geometric_calibration/f"][()] = self.f
+                file["geometric_calibration/f_std"][()] = self.f_std
+                file["geometric_calibration/c"][()] = self.c
+                file["geometric_calibration/c_std"][()] = self.c_std
+                file["geometric_calibration/s"][()] = self.s
+                file["geometric_calibration/s_std"][()] = self.s_std
+                file["geometric_calibration/radial_dist_coeffs"][()] = self.radial_dist_coeffs
+                file["geometric_calibration/radial_dist_coeffs_std"][()] = self.radial_dist_coeffs_std
+                file["geometric_calibration/tangential_dist_coeffs"][()] = self.tangential_dist_coeffs
+                file["geometric_calibration/tangential_dist_coeffs_std"][()] = self.tangential_dist_coeffs_std
+                file["geometric_calibration/r_vecs"][()] = self.r_vecs
+                file["geometric_calibration/t_vecs"][()] = self.t_vecs
+                file["geometric_calibration/extrinsics_std"][()] = self.extrinsics_std
+                file["geometric_calibration/per_view_err"][()] = self.per_view_err
+                file["geometric_calibration/rms_reproj_err"][()] = self.rms_reproj_error
+                file["geometric_calibration/sensor_dimensions"][()] = self.sensor_dimensions
+            except TypeError as e:
+                raise TypeError("There is no data to save, this is an empty instance of `CalibrationParameters`.") from e
 
 
 def remap_image(image: npt.NDArray, map_x: npt.NDArray, map_y: npt.NDArray,

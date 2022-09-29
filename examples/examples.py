@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from camera_calibration_toolbox.package_logger import configure_logger
 
 #%% Configure logger (optional)
-configure_logger('INFO')
+configure_logger()
 
 #%% Load images into array
 directory = 'examples/test_images'
@@ -29,7 +29,7 @@ for image_idx in range(n_images):
 
 #%% Perform calibration
 calibrator = CameraCalibrator()
-calibration_parameters = calibrator.calibrate_camera(image_array, 'NCH0000050630')
+calibration_parameters = calibrator.calibrate_camera(image_array, 'NCH0000070630')
 
 #%% Plot all images with features if features were detected
 for feature_image_idx in range(n_images):
@@ -61,8 +61,8 @@ afov = calibration_parameters.get_afov()
 h_fov, v_fov = calculate_fov(afov, working_distance)
 
 #%% Save parameters
-calibration_parameters.save_parameters_csv('examples/new_test_parameters.csv')
+calibration_parameters.save_parameters('examples/new_parameters.h5')
 
 #%% Load parameters
 calibration_parameters = CalibrationParameters()
-calibration_parameters.load_parameters_csv('examples/test_parameters.csv')
+calibration_parameters.load_parameters('examples/example_parameters.h5')

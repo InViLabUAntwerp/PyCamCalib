@@ -241,14 +241,14 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         sensor_dimensions = self.calibration_parameters.get_sensor_dimensions()
         self.distortionPlot.plot_distortion(sensor_dimensions, intrinsics_matrix, distortion_coeffs)
 
-        self.intrinsicsTable.item(0, 0).setText(f'{round(self.calibration_parameters.fx, 4):.4f}')
-        self.intrinsicsTable.item(0, 1).setText(f'{round(self.calibration_parameters.fx_std, 4):.4f}')
-        self.intrinsicsTable.item(1, 0).setText(f'{round(self.calibration_parameters.fy, 4):.4f}')
-        self.intrinsicsTable.item(1, 1).setText(f'{round(self.calibration_parameters.fy_std, 4):.4f}')
-        self.intrinsicsTable.item(2, 0).setText(f'{round(self.calibration_parameters.cx, 4):.4f}')
-        self.intrinsicsTable.item(2, 1).setText(f'{round(self.calibration_parameters.cx_std, 4):.4f}')
-        self.intrinsicsTable.item(3, 0).setText(f'{round(self.calibration_parameters.cy, 4):.4f}')
-        self.intrinsicsTable.item(3, 1).setText(f'{round(self.calibration_parameters.cy_std, 4):.4f}')
+        self.intrinsicsTable.item(0, 0).setText(f'{round(self.calibration_parameters.f[0], 4):.4f}')
+        self.intrinsicsTable.item(0, 1).setText(f'{round(self.calibration_parameters.f_std[0], 4):.4f}')
+        self.intrinsicsTable.item(1, 0).setText(f'{round(self.calibration_parameters.f[1], 4):.4f}')
+        self.intrinsicsTable.item(1, 1).setText(f'{round(self.calibration_parameters.f_std[1], 4):.4f}')
+        self.intrinsicsTable.item(2, 0).setText(f'{round(self.calibration_parameters.c[0], 4):.4f}')
+        self.intrinsicsTable.item(2, 1).setText(f'{round(self.calibration_parameters.c_std[0], 4):.4f}')
+        self.intrinsicsTable.item(3, 0).setText(f'{round(self.calibration_parameters.c[1], 4):.4f}')
+        self.intrinsicsTable.item(3, 1).setText(f'{round(self.calibration_parameters.c_std[1], 4):.4f}')
         self.intrinsicsTable.item(4, 0).setText(f'{round(self.calibration_parameters.s, 4):.4f}')
         self.intrinsicsTable.item(4, 1).setText(f'{round(self.calibration_parameters.s_std, 4):.4f}')
 
@@ -273,9 +273,12 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
 
     def export_calibration_parameters(self) -> None:
         """Export the calibration parameters to a file."""
-        path = QFileDialog.getSaveFileName(self, "Save camera parameters file.", filter="CSV file (*.csv)")
-        if path[0] != '':
-            self.calibration_parameters.save_parameters_csv(path[0])
+        path = QFileDialog.getSaveFileName(self, "Save camera parameters file.", filter="HDF5 file (*.h5)")
+        if path[0]:
+            try:
+                self.calibration_parameters.save_parameters(path[0])
+            except OSError:
+                self.display_error("File error", "You are trying to write the parameters to an incompatible file.")
 
     def display_error(self, title: str, error_message: str) -> None:
         """"Display an error message in a separate window."""
