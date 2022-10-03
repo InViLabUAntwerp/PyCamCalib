@@ -8,6 +8,7 @@ from camera_calibration_toolbox.core.feature_detection import FeatureDetector
 from camera_calibration_toolbox.core.camera_calibration import CameraCalibrator
 from camera_calibration_toolbox.core.camera_calibration import CalibrationParameters
 import os
+import h5py
 import cv2
 import numpy as np
 import numpy.typing as npt
@@ -55,6 +56,9 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.filenames = []
         """List of all selected file names."""
 
+        self.filter = ''
+        """Which filter was used when selecting files."""
+
         self.image_names = []
         """List of all loaded images. These are either the file names or indices."""
 
@@ -65,19 +69,52 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
 
     def select_files(self) -> None:
         """Open file explorer to select files."""
-        self.filenames, _ = QFileDialog.getOpenFileNames(self, "Select calibration file(s).",
-                                                         filter="Image files (*.png *.jpg *.jpeg *.bmp *.tiff *.tif);;"
-                                                                "SEP files (*.sep);;"
-                                                                "HDF5 files (*.h5)")
+
+        if self.data_class_available:
+            self.filenames, self.filter = QFileDialog.getOpenFileNames(self, "Select calibration file(s).",
+                                                                       filter="Image files (*.png *.jpg *.jpeg *.bmp "
+                                                                              "*.tiff *.tif);;"
+                                                                              "DataClass files (*.h5 *.sep);;"
+                                                                              "HDF5 files (*.h5)")
+        else:
+            self.filenames, self.filter = QFileDialog.getOpenFileNames(self, "Select calibration file(s).",
+                                                                       filter="Image files (*.png *.jpg *.jpeg *.bmp "
+                                                                              "*.tiff *.tif);;"
+                                                                              "HDF5 files (*.h5)")
         self.namesListWidget.clear()
         if self.filenames:
             n_rows = len(self.filenames)
             for idx in range(n_rows):
                 QListWidgetItem(os.path.basename(self.filenames[idx]), self.namesListWidget)
+            if self.filter.startswith('HDF5'):
+                self.headerField.setEnabled(True)
+            else:
+                self.headerField.setEnabled(False)
+                self.headerField.clear()
+        else:
+            self.headerField.setEnabled(False)
+            self.headerField.clear()
 
-    def load_image_data(self, file_name: str) -> npt.NDArray:
+    def load_image_data(self, full_path) -> npt.NDArray:
 
-        image_array = cv2.imread(file_name)
+        if self.filter.startswith("Image"):
+            image_array = cv2.imread(full_path)
+        elif self.filter.startswith("DataClass"):
+            try:
+                file = GenericDataClass().Open(full_path)
+            except KeyError:
+                raise ImageError("Selected file is not compatible with the InViLab ``DataClass`` and cannot be loaded.")
+            else:
+                n_frames = file.numberOfFrames
+                image_array = file.GetFrame(0, n_frames - 1)
+                file.Close()
+        else:
+            with h5py.File(full_path, "r") as file:
+                key = self.headerField.text()
+                try:
+                    image_array = file[key][()]
+                except KeyError:
+                    raise KeyError("Key provided in ``data header field`` is not valid.")
 
         return image_array
 
@@ -88,6 +125,8 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.display_error("No tag", "A feature tag is required for calibration.")
         elif not self.filenames:
             self.display_error("No images", "Provide images for calibration.")
+        elif self.filter.startswith("HDF5") and not self.headerField.text():
+            self.display_error("Missing header", "Provide the header for the image data.")
         else:
             self.statusText.setText("Calibrating")
             self.groupBox.setEnabled(False)
@@ -144,16 +183,18 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.display_error("Tag error", "The provided tag is invalid, check the documentation for more info on "
                                             "how to construct feature tags.")
         elif message == 3:
-            self.display_error("Image error", "Failed to load image or image data is not 2D, 3D or 4D.")
+            self.display_error("Image error", "Failed to load data or data has wrong dimensions.")
+        elif message == 2:
+            self.display_error("Key error", "Provided data header is not valid.")
         else:
             self.update_image_tab()
-            if message == 2:
+            if message == 1:
                 self.display_error("Calibration error", "Failed to detect specified feature in every image.")
             else:
                 self.update_parameters_tab()
                 self.update_reproj_error_tab()
                 self.exportButton.setEnabled(True)
-                if message == 1:
+                if message == 0:
                     self.display_warning("Calibration warning", "At least 11 good images are required for an accurate "
                                                                 "calibration.")
         self.tabWidget.setEnabled(True)
@@ -273,7 +314,8 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
 
     def export_calibration_parameters(self) -> None:
         """Export the calibration parameters to a file."""
-        path = QFileDialog.getSaveFileName(self, "Save camera parameters file.", filter="HDF5 file (*.h5)")
+        path = QFileDialog.getSaveFileName(self, "Save camera parameters file.", filter="HDF5 file (*.h5)",
+                                           options=QFileDialog.DontConfirmOverwrite)
         if path[0]:
             try:
                 self.calibration_parameters.save_parameters(path[0])
@@ -319,6 +361,7 @@ class CalibrateCameraWorker(QObject):
         try:
             feature_detector = FeatureDetector(self.app.tagField.text())
         except TagError:
+            logging.exception("message")
             message = 4
         else:
             self.app.calibrator.feature_list = []
@@ -326,28 +369,52 @@ class CalibrateCameraWorker(QObject):
             normalize = self.app.normalizeCheckBox.isChecked()
             invert = self.app.invertCheckBox.isChecked()
             try:
-                for idx in range(len(self.app.filenames)):
-                    image_array = self.app.load_image_data(self.app.filenames[idx])
-                    image_name = os.path.basename(self.app.filenames[idx])
-                    feature = feature_detector.detect_feature(image_array, normalize, invert)
-                    if not feature.score:
-                        self.app.logger.info("Failed feature detection on " + image_name + ".")
-                    self.app.calibrator.feature_list.append(feature)
-                    self.update.emit(feature.feature_image, image_name)
-                    self.app.image_names.append(image_name)
+                if len(self.app.filenames) == 1:
+                    image_array = self.app.load_image_data(self.app.filenames[0])
+                    n_dims = len(image_array.shape)
+                    if not 3 <= n_dims <= 4:
+                        raise ImageError("Image data from single file should be 3- or 4-dimensional.")
+                    n_images = image_array.shape[-1]
+                    for idx in range(n_images):
+                        image = image_array[..., idx]
+                        image_name = 'image ' + str(idx)
+                        feature = feature_detector.detect_feature(image, normalize, invert)
+                        if not feature.score:
+                            self.app.logger.info("Failed feature detection on " + image_name + ".")
+                        self.app.calibrator.feature_list.append(feature)
+                        self.update.emit(feature.feature_image, image_name)
+                        self.app.image_names.append(image_name)
+                else:
+                    n_images = len(self.app.filenames)
+                    for idx in range(n_images):
+                        image = self.app.load_image_data(self.app.filenames[idx])
+                        n_dims = len(image.shape)
+                        if not 2 <= n_dims <= 3:
+                            raise ImageError("Image data from multiple files should be 2- or 3-dimensional.")
+                        image_name = os.path.basename(self.app.filenames[idx])
+                        feature = feature_detector.detect_feature(image, normalize, invert)
+                        if not feature.score:
+                            self.app.logger.info("Failed feature detection on " + image_name + ".")
+                        self.app.calibrator.feature_list.append(feature)
+                        self.update.emit(feature.feature_image, image_name)
+                        self.app.image_names.append(image_name)
             except ImageError:
+                logging.exception("message")
                 message = 3
+            except KeyError:
+                logging.exception("message")
+                message = 2
             else:
                 image_points_list, object_points_list = self.app.calibrator.construct_points_lists([])
                 if not image_points_list:
-                    message = 2
+                    message = 1
                 else:
                     if len(image_points_list) < 11:
-                        message = 1
-                    else:
                         message = 0
-                    self.app.calibrator.height = image_array.shape[0]
-                    self.app.calibrator.width = image_array.shape[1]
+                    else:
+                        message = -1
+                    self.app.calibrator.height = image.shape[0]
+                    self.app.calibrator.width = image.shape[1]
                     self.app.calibration_parameters = self.app.calibrator.opencv_calibration(image_points_list,
                                                                                              object_points_list)
         finally:

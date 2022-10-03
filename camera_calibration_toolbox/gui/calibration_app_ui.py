@@ -273,61 +273,72 @@ class Ui_CalibrationApp(object):
         self.gridLayout = QGridLayout(self.gridLayoutWidget)
         self.gridLayout.setObjectName(u"gridLayout")
         self.gridLayout.setContentsMargins(0, 0, 0, 0)
-        self.invertCheckBox = QCheckBox(self.gridLayoutWidget)
-        self.invertCheckBox.setObjectName(u"invertCheckBox")
+        self.label_4 = QLabel(self.gridLayoutWidget)
+        self.label_4.setObjectName(u"label_4")
 
-        self.gridLayout.addWidget(self.invertCheckBox, 3, 1, 1, 1)
+        self.gridLayout.addWidget(self.label_4, 5, 0, 1, 1)
 
         self.exportButton = QPushButton(self.gridLayoutWidget)
         self.exportButton.setObjectName(u"exportButton")
         self.exportButton.setEnabled(False)
 
-        self.gridLayout.addWidget(self.exportButton, 6, 1, 1, 1)
+        self.gridLayout.addWidget(self.exportButton, 7, 1, 1, 1)
 
-        self.label_4 = QLabel(self.gridLayoutWidget)
-        self.label_4.setObjectName(u"label_4")
+        self.statusText = QLabel(self.gridLayoutWidget)
+        self.statusText.setObjectName(u"statusText")
 
-        self.gridLayout.addWidget(self.label_4, 4, 0, 1, 1)
+        self.gridLayout.addWidget(self.statusText, 8, 1, 1, 1)
 
-        self.browseButton = QPushButton(self.gridLayoutWidget)
-        self.browseButton.setObjectName(u"browseButton")
+        self.calibrateButton = QPushButton(self.gridLayoutWidget)
+        self.calibrateButton.setObjectName(u"calibrateButton")
 
-        self.gridLayout.addWidget(self.browseButton, 1, 1, 1, 1)
+        self.gridLayout.addWidget(self.calibrateButton, 6, 1, 1, 1)
+
+        self.tagField = QLineEdit(self.gridLayoutWidget)
+        self.tagField.setObjectName(u"tagField")
+
+        self.gridLayout.addWidget(self.tagField, 5, 1, 1, 1)
+
+        self.statusLabel = QLabel(self.gridLayoutWidget)
+        self.statusLabel.setObjectName(u"statusLabel")
+
+        self.gridLayout.addWidget(self.statusLabel, 8, 0, 1, 1)
+
+        self.invertCheckBox = QCheckBox(self.gridLayoutWidget)
+        self.invertCheckBox.setObjectName(u"invertCheckBox")
+
+        self.gridLayout.addWidget(self.invertCheckBox, 3, 1, 1, 1)
 
         self.normalizeCheckBox = QCheckBox(self.gridLayoutWidget)
         self.normalizeCheckBox.setObjectName(u"normalizeCheckBox")
 
         self.gridLayout.addWidget(self.normalizeCheckBox, 2, 1, 1, 1)
 
-        self.label = QLabel(self.gridLayoutWidget)
-        self.label.setObjectName(u"label")
-
-        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
-
-        self.statusText = QLabel(self.gridLayoutWidget)
-        self.statusText.setObjectName(u"statusText")
-
-        self.gridLayout.addWidget(self.statusText, 7, 1, 1, 1)
-
-        self.calibrateButton = QPushButton(self.gridLayoutWidget)
-        self.calibrateButton.setObjectName(u"calibrateButton")
-
-        self.gridLayout.addWidget(self.calibrateButton, 5, 1, 1, 1)
-
         self.namesListWidget = QListWidget(self.gridLayoutWidget)
         self.namesListWidget.setObjectName(u"namesListWidget")
 
         self.gridLayout.addWidget(self.namesListWidget, 0, 1, 1, 1)
 
-        self.tagField = QLineEdit(self.gridLayoutWidget)
-        self.tagField.setObjectName(u"tagField")
+        self.browseButton = QPushButton(self.gridLayoutWidget)
+        self.browseButton.setObjectName(u"browseButton")
 
-        self.gridLayout.addWidget(self.tagField, 4, 1, 1, 1)
+        self.gridLayout.addWidget(self.browseButton, 1, 1, 1, 1)
 
-        self.statusLabel = QLabel(self.gridLayoutWidget)
-        self.statusLabel.setObjectName(u"statusLabel")
+        self.label = QLabel(self.gridLayoutWidget)
+        self.label.setObjectName(u"label")
 
-        self.gridLayout.addWidget(self.statusLabel, 7, 0, 1, 1)
+        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
+
+        self.headerField = QLineEdit(self.gridLayoutWidget)
+        self.headerField.setObjectName(u"headerField")
+        self.headerField.setEnabled(False)
+
+        self.gridLayout.addWidget(self.headerField, 4, 1, 1, 1)
+
+        self.label_2 = QLabel(self.gridLayoutWidget)
+        self.label_2.setObjectName(u"label_2")
+
+        self.gridLayout.addWidget(self.label_2, 4, 0, 1, 1)
 
         self.label_6 = QLabel(self.groupBox)
         self.label_6.setObjectName(u"label_6")
@@ -443,15 +454,16 @@ class Ui_CalibrationApp(object):
         self.label_5.setText(QCoreApplication.translate("CalibrationApp", u"Intrinsic parameters:", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.calibrationParamsTab), QCoreApplication.translate("CalibrationApp", u"Calibration params", None))
         self.groupBox.setTitle(QCoreApplication.translate("CalibrationApp", u"Calibration options", None))
-        self.invertCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Invert", None))
+        self.label_4.setText(QCoreApplication.translate("CalibrationApp", u"Feature tag:", None))
         self.exportButton.setText(QCoreApplication.translate("CalibrationApp", u"Export", None))
-        self.label_4.setText(QCoreApplication.translate("CalibrationApp", u"Tag", None))
-        self.browseButton.setText(QCoreApplication.translate("CalibrationApp", u"Browse", None))
-        self.normalizeCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Normalize", None))
-        self.label.setText(QCoreApplication.translate("CalibrationApp", u"File(s)", None))
         self.statusText.setText(QCoreApplication.translate("CalibrationApp", u"Ready", None))
         self.calibrateButton.setText(QCoreApplication.translate("CalibrationApp", u" Calibrate", None))
-        self.statusLabel.setText(QCoreApplication.translate("CalibrationApp", u"Status", None))
+        self.statusLabel.setText(QCoreApplication.translate("CalibrationApp", u"Status:", None))
+        self.invertCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Invert", None))
+        self.normalizeCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Normalize", None))
+        self.browseButton.setText(QCoreApplication.translate("CalibrationApp", u"Browse", None))
+        self.label.setText(QCoreApplication.translate("CalibrationApp", u"File(s):", None))
+        self.label_2.setText(QCoreApplication.translate("CalibrationApp", u"Data header:", None))
         self.label_6.setText("")
     # retranslateUi
 
