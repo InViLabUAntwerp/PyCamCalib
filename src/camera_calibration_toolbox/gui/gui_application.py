@@ -440,12 +440,12 @@ class CalibrateIndicesWorker(QObject):
         """Perform calibration with indices."""
         image_points_list, object_points_list = self.app.calibrator.construct_points_lists(self.indices)
         if not image_points_list:
-            message = 2
+            message = 1
         else:
             if len(image_points_list) < 11:
-                message = 1
-            else:
                 message = 0
+            else:
+                message = -1
             self.app.calibration_parameters = self.app.calibrator.opencv_calibration(image_points_list,
                                                                                      object_points_list)
         self.finished.emit(message)

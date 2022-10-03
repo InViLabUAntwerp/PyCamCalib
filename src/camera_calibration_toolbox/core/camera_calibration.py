@@ -5,7 +5,6 @@ import numpy.typing as npt
 from typing import Tuple
 import cv2
 import numpy as np
-import csv
 import h5py
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.core.exceptions import ImageError, CalibrationError
