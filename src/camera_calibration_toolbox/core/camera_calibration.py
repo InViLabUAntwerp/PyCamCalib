@@ -19,23 +19,20 @@ class CameraCalibrator:
         """Class constructor."""
         self._logger = logging.getLogger(__name__)
 
-        self.feature_list = []
+        self.feature_list: list = []
         """List with :py:class:`.CalibrationFeature` objects for all images."""
 
-        self.indices = []
+        self.indices: list = []
         """Indices of all images in :py:data:`feature_list` that were used for the current calibration."""
 
-        self.per_view_err = []
+        self.per_view_err: npt.NDArray[np.float64] = np.zeros(1)
         """Per view re-projection errors for all images that are listed in :py:data:`indices`."""
 
-        self.rms_reproj_error = 0
+        self.rms_reproj_error: np.float64 = np.float64(0)
         """The rms re-projection error for the current calibration."""
 
-        self.height = 0
-        """Sensor height in pixels."""
-
-        self.width = 0
-        """Sensor width in pixels."""
+        self.sensor_dimensions = np.zeros(2, dtype=np.int32)
+        """Sensor dimensions in pixels (w, h)."""
 
     def calibrate_camera(self, image_array: npt.NDArray, tag: str, normalize: bool = False,
                          invert: bool = False) -> CalibrationParameters:
@@ -98,18 +95,24 @@ class CameraCalibrator:
         return calibration_parameters
 
     def construct_feature_list(self, image_array: npt.NDArray, tag: str, normalize: bool, invert: bool) -> None:
-        """Construct a list with the calibration features for all images in the image_array."""
+        """Construct a list with the calibration features for all images in the image_array.
+
+        This method is used by :py:meth:`calibrate_camera`. Unless you want to perform the calibration steps
+        separately, you should not use this method.
+        """
         self.feature_list = []
         feature_detector = FeatureDetector(tag)
         if len(image_array.shape) == 3:
-            self.height, self.width, n_images = image_array.shape
+            height, width, n_images = image_array.shape
+            self.sensor_dimensions = np.array([width, height])
             for idx in range(n_images):
                 feature = feature_detector.detect_feature(image_array[:, :, idx], normalize, invert)
                 self.feature_list.append(feature)
                 if not feature.score:
                     self._logger.info("Failed feature detection on image nr " + str(idx+1) + ".")
         elif len(image_array.shape) == 4:
-            self.height, self.width, n_channels, n_images = image_array.shape
+            height, width, n_channels, n_images = image_array.shape
+            self.sensor_dimensions = np.array([width, height])
             for idx in range(n_images):
                 feature = feature_detector.detect_feature(image_array[:, :, :, idx], normalize, invert)
                 self.feature_list.append(feature)
@@ -123,7 +126,9 @@ class CameraCalibrator:
         """Construct lists of image points and object points for calibration.
 
         If indices is empty all images where a feature was detected will be used, otherwise only images that
-        correspond to the elements in indices will be used.
+        correspond to the elements in indices will be used. This method is used by :py:meth:`calibrate_camera` and
+        :py:meth:`calibrate_indices`. Unless you want to perform the calibration steps separately, you should not use
+        this method.
         """
         self.indices = []
         object_points_list = []
@@ -150,20 +155,26 @@ class CameraCalibrator:
         return image_points_list, object_points_list
 
     def opencv_calibration(self, image_points_list: list, object_points_list: list) -> CalibrationParameters:
-        """Regular OpenCV camera calibration."""
+        """Regular OpenCV camera calibration.
+
+        This method is used by :py:meth:`calibrate_camera` and :py:meth:`calibrate_indices`. Unless you want to
+        perform the calibration steps separately, you should not use this method.
+        """
 
         rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, per_view_err \
-            = cv2.calibrateCameraExtended(object_points_list, image_points_list, (self.width, self.height), None, None)
+            = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions, None, None)
 
-        self.rms_reproj_error = rms_reproj_error
+        self.rms_reproj_error = np.float64(rms_reproj_error)
         self.per_view_err = np.squeeze(per_view_err)
         dist_coeffs = np.squeeze(dist_coeffs)
         intrinsics_std = np.squeeze(intrinsics_std)
+        r_vecs = np.squeeze(np.array(r_vecs))
+        t_vecs = np.squeeze(np.array(t_vecs))
 
         calibration_parameters = CalibrationParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs,
                                                      t_vecs, intrinsics_std, extrinsics_std, self.per_view_err,
-                                                     self.width, self.height)
+                                                     self.sensor_dimensions)
 
         return calibration_parameters
 
@@ -173,52 +184,52 @@ class CalibrationParameters:
 
     def __init__(self) -> None:
         """Class constructor."""
-        self.f = None
+        self.f: npt.NDArray[np.float64] = np.zeros(2)
         """Focal length in pixels (x, y)."""
 
-        self.f_std = None
+        self.f_std: npt.NDArray[np.float64] = np.zeros(2)
         """Standard deviation of focal length (x, y)."""
 
-        self.c = None
+        self.c: npt.NDArray[np.float64] = np.zeros(2)
         """Principal point in pixels (x, y)."""
 
-        self.c_std = None
+        self.c_std: npt.NDArray[np.float64] = np.zeros(2)
         """Standard deviation of principal point (x, y)."""
 
-        self.s = None
+        self.s: np.int32 = np.int32(0)
         """Skew."""
 
-        self.s_std = None
+        self.s_std: np.int32 = np.int32(0)
         """Standard deviation of skew."""
 
-        self.radial_dist_coeffs = None
+        self.radial_dist_coeffs: npt.NDArray[np.float64] = np.zeros(3)
         """Radial distortion coefficients."""
 
-        self.radial_dist_coeffs_std = None
+        self.radial_dist_coeffs_std: npt.NDArray[np.float64] = np.zeros(3)
         """Standard deviations of radial distortion coefficients."""
 
-        self.tangential_dist_coeffs = None
+        self.tangential_dist_coeffs: npt.NDArray[np.float64] = np.zeros(2)
         """Tangential distortion coefficients."""
 
-        self.tangential_dist_coeffs_std = None
+        self.tangential_dist_coeffs_std: npt.NDArray[np.float64] = np.zeros(2)
         """Standard deviations of tangential distortion coefficients."""
 
-        self.r_vecs = None
+        self.r_vecs: npt.NDArray[np.float64] = np.zeros((1, 3))
         """Rotation vectors for each image."""
 
-        self.t_vecs = None
+        self.t_vecs: npt.NDArray[np.float64] = np.zeros((1, 3))
         """Translation vectors for each image."""
 
-        self.extrinsics_std = None
+        self.extrinsics_std: npt.NDArray[np.float64] = np.zeros(1)
         """Standard deviations for extrinsic parameters."""
 
-        self.rms_reproj_error = None
+        self.rms_reproj_error: np.float64 = np.float64(0)
         """Overall rms re-projection error."""
 
-        self.per_view_err = None
+        self.per_view_err: npt.NDArray[np.float64] = np.zeros(1)
         """Array of the re-projection error per image."""
 
-        self.sensor_dimensions = None
+        self.sensor_dimensions: npt.NDArray[np.int32] = np.zeros(2, dtype=np.int32)
         """Sensor dimensions in pixels (w, h)."""
 
     def get_sensor_dimensions(self) -> Tuple[np.int32, np.int32]:
@@ -279,7 +290,8 @@ class CalibrationParameters:
 
     def set_parameters_opencv(self, rms_reproj_error: float, intrinsics_matrix: npt.NDArray, dist_coeffs: npt.NDArray,
                               r_vecs: npt.NDArray, t_vecs: npt.NDArray, intrinsics_std: npt.NDArray,
-                              extrinsics_std: npt.NDArray, per_view_err: npt.NDArray, width: int, height: int) -> None:
+                              extrinsics_std: npt.NDArray, per_view_err: npt.NDArray,
+                              sensor_dimensions: npt.NDArray) -> None:
         """Save parameters from opencv calibration to object."""
         self.f = np.array([intrinsics_matrix[0, 0], intrinsics_matrix[1, 1]])
         self.f_std = np.array([intrinsics_std[0], intrinsics_std[1]])
@@ -296,7 +308,7 @@ class CalibrationParameters:
         self.extrinsics_std = extrinsics_std
         self.rms_reproj_error = rms_reproj_error
         self.per_view_err = per_view_err
-        self.sensor_dimensions = np.array([width, height])
+        self.sensor_dimensions = sensor_dimensions
 
     def load_parameters(self, full_path: str) -> None:
         """Load calibration parameters from .h5 file into object.
@@ -335,7 +347,6 @@ class CalibrationParameters:
         parameters, these parameters will be overwritten.
 
         :param full_path: Full filepath with directory and filename.
-        :raises TypeError: If this instance of :py:class:`CalibrationParameters` does not contain any parameters.
         :raises OSError: If the path contains forbidden characters or the selected file is not compatible.
         :raises FileNotFoundError: If the specified directory does not exist.
         """
@@ -374,8 +385,6 @@ class CalibrationParameters:
                 file["geometric_calibration/per_view_err"][()] = self.per_view_err
                 file["geometric_calibration/rms_reproj_err"][()] = self.rms_reproj_error
                 file["geometric_calibration/sensor_dimensions"][()] = self.sensor_dimensions
-            except TypeError as e:
-                raise TypeError("There is no data to save, this is an empty instance of `CalibrationParameters`.") from e
 
 
 def remap_image(image: npt.NDArray, map_x: npt.NDArray, map_y: npt.NDArray,
@@ -414,7 +423,7 @@ def calculate_fov(afov: Tuple[float, float], working_distance: float) -> Tuple[f
     return h_fov, v_fov
 
 
-def plot_reproj_error(per_view_err: npt.NDArray[np.float64], image_indices: list, rms_reproj_error: float) -> None:
+def plot_reproj_error(per_view_err: npt.NDArray[np.float64], image_indices: list, rms_reproj_error: np.float4) -> None:
     """Plot mean re-projection error and re-projection error for each calibration image.
 
     :param per_view_err: re-projection error for each image.
@@ -431,7 +440,7 @@ def plot_reproj_error(per_view_err: npt.NDArray[np.float64], image_indices: list
     plt.show()
 
 
-def plot_distortion(sensor_size: Tuple[int, int], m: npt.NDArray[np.float64], d: npt.NDArray[np.float64]) -> None:
+def plot_distortion(sensor_size: npt.NDArray[np.int32], m: npt.NDArray[np.float64], d: npt.NDArray[np.float64]) -> None:
     """Plot camera distortion.
 
     :param sensor_size: The size of the sensor in pixels (width, height)

@@ -17,7 +17,7 @@ from camera_calibration_toolbox.package_logger import configure_logger
 configure_logger()
 
 #%% Load images into array
-directory = 'examples/test_images'
+directory = 'examples/PT'
 files = [join(directory, f) for f in listdir(directory)]
 n_images = len(files)
 for image_idx in range(n_images):
@@ -29,7 +29,7 @@ for image_idx in range(n_images):
 
 #%% Perform calibration
 calibrator = CameraCalibrator()
-calibration_parameters = calibrator.calibrate_camera(image_array, 'NCH0000070630')
+calibration_parameters = calibrator.calibrate_camera(image_array, 'NCH0000040530')
 
 #%% Plot all images with features if features were detected
 for feature_image_idx in range(n_images):

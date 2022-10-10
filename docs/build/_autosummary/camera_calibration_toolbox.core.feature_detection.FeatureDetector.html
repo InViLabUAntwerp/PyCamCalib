@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>camera_calibration_toolbox.core.feature_detection.FeatureDetector &mdash; Camera calibration toolbox 1.0 documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="camera_calibration_toolbox.package_logger" href="camera_calibration_toolbox.package_logger.html" />
+    <link rel="prev" title="camera_calibration_toolbox.core.feature_detection.CalibrationFeature" href="camera_calibration_toolbox.core.feature_detection.CalibrationFeature.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Camera calibration toolbox
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="camera_calibration_toolbox.html">camera_calibration_toolbox</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="camera_calibration_toolbox.core.html">camera_calibration_toolbox.core</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration_toolbox.core.camera_calibration.html">camera_calibration_toolbox.core.camera_calibration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration_toolbox.core.exceptions.html">camera_calibration_toolbox.core.exceptions</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="camera_calibration_toolbox.core.feature_detection.html">camera_calibration_toolbox.core.feature_detection</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="camera_calibration_toolbox.core.feature_detection.CalibrationFeature.html">camera_calibration_toolbox.core.feature_detection.CalibrationFeature</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">camera_calibration_toolbox.core.feature_detection.FeatureDetector</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="camera_calibration_toolbox.package_logger.html">camera_calibration_toolbox.package_logger</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Camera calibration toolbox</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="camera_calibration_toolbox.html">camera_calibration_toolbox</a> &raquo;</li>
+          <li><a href="camera_calibration_toolbox.core.html">camera_calibration_toolbox.core</a> &raquo;</li>
+          <li><a href="camera_calibration_toolbox.core.feature_detection.html">camera_calibration_toolbox.core.feature_detection</a> &raquo;</li>
+      <li>camera_calibration_toolbox.core.feature_detection.FeatureDetector</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/_autosummary/camera_calibration_toolbox.core.feature_detection.FeatureDetector.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="camera-calibration-toolbox-core-feature-detection-featuredetector">
+<h1>camera_calibration_toolbox.core.feature_detection.FeatureDetector<a class="headerlink" href="#camera-calibration-toolbox-core-feature-detection-featuredetector" title="Permalink to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">camera_calibration_toolbox.core.feature_detection.</span></span><span class="sig-name descname"><span class="pre">FeatureDetector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tag</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/camera_calibration_toolbox/core/feature_detection.html#FeatureDetector"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector" title="Permalink to this definition"></a></dt>
+<dd><p>Object used for detecting a specified calibration feature in an image.</p>
+<p>Which feature the detector tries to detect is determined by the tag upon initialization. Afterwards it can be used
+to detect the same calibration feature in several images.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tag</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/camera_calibration_toolbox/core/feature_detection.html#FeatureDetector.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.__init__" title="Permalink to this definition"></a></dt>
+<dd><p>Class constructor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>tag</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>) – Tag that describes the feature which needs to be detected.</p>
+</dd>
+<dt class="field-even">Raises</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="camera_calibration_toolbox.core.exceptions.TagError.html#camera_calibration_toolbox.core.exceptions.TagError" title="camera_calibration_toolbox.core.exceptions.TagError"><strong>TagError</strong></a> – When an invalid tag is used. This can occur when the wrong prefix is used, the tag is not
+long enough or the tail doesn’t contain numeric data.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.10)"><strong>TypeError</strong></a> – When tag is not a string.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Methods</p>
+<table class="autosummary longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.__init__" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.__init__"><code class="xref py py-obj docutils literal notranslate"><span class="pre">__init__</span></code></a>(tag)</p></td>
+<td><p>Class constructor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.detect_feature" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.detect_feature"><code class="xref py py-obj docutils literal notranslate"><span class="pre">detect_feature</span></code></a>(image[, normalize, invert])</p></td>
+<td><p>Attempt to detect the specified feature in the image.</p></td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Attributes</p>
+<table class="autosummary longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">board_size</span></code></a></p></td>
+<td><p>Amount of inner corners in (rows, columns).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features"><code class="xref py py-obj docutils literal notranslate"><span class="pre">space_between_features</span></code></a></p></td>
+<td><p>Distance between feature points in <a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units"><code class="xref py py-data docutils literal notranslate"><span class="pre">units</span></code></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">feature_type</span></code></a></p></td>
+<td><p>Which type of feature the detector will look for.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units"><code class="xref py py-obj docutils literal notranslate"><span class="pre">units</span></code></a></p></td>
+<td><p>Units in object-space between feature points.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size">
+<span class="sig-name descname"><span class="pre">board_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Tuple" title="(in Python v3.10)"><span class="pre">Tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size" title="Permalink to this definition"></a></dt>
+<dd><p>Amount of inner corners in (rows, columns).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.detect_feature">
+<span class="sig-name descname"><span class="pre">detect_feature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">invert</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/camera_calibration_toolbox/core/feature_detection.html#FeatureDetector.detect_feature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.detect_feature" title="Permalink to this definition"></a></dt>
+<dd><p>Attempt to detect the specified feature in the image.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image</strong> (<a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.10)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>, <a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.dtype.html#numpy.dtype" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dtype</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.TypeVar" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code></a>(<code class="docutils literal notranslate"><span class="pre">ScalarType</span></code>, bound= <a class="reference external" href="https://numpy.org/doc/1.21/reference/arrays.scalars.html#numpy.generic" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">generic</span></code></a>, covariant=True)]]) – One- or multi-channel image.</p></li>
+<li><p><strong>normalize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to normalize the image or not, defaults to False.</p></li>
+<li><p><strong>invert</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to invert the image or not, defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="camera_calibration_toolbox.core.exceptions.ImageError.html#camera_calibration_toolbox.core.exceptions.ImageError" title="camera_calibration_toolbox.core.exceptions.ImageError"><strong>ImageError</strong></a> – When image is not 2- or 3-dimensional.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.10)"><strong>TypeError</strong></a> – When the type of image is not a numpy array.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="camera_calibration_toolbox.core.feature_detection.CalibrationFeature.html#camera_calibration_toolbox.core.feature_detection.CalibrationFeature" title="camera_calibration_toolbox.core.feature_detection.CalibrationFeature"><code class="xref py py-class docutils literal notranslate"><span class="pre">CalibrationFeature</span></code></a></p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Object that contains all feature data for the image.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type">
+<span class="sig-name descname"><span class="pre">feature_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type" title="Permalink to this definition"></a></dt>
+<dd><p>Which type of feature the detector will look for.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features">
+<span class="sig-name descname"><span class="pre">space_between_features</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><span class="pre">float</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features" title="Permalink to this definition"></a></dt>
+<dd><p>Distance between feature points in <a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units"><code class="xref py py-data docutils literal notranslate"><span class="pre">units</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units">
+<span class="sig-name descname"><span class="pre">units</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="Permalink to this definition"></a></dt>
+<dd><p>Units in object-space between feature points.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="camera_calibration_toolbox.core.feature_detection.CalibrationFeature.html" class="btn btn-neutral float-left" title="camera_calibration_toolbox.core.feature_detection.CalibrationFeature" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="camera_calibration_toolbox.package_logger.html" class="btn btn-neutral float-right" title="camera_calibration_toolbox.package_logger" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, Michael Hillen &lt;michael.hillen@uantwerpen.be&gt;, Seppe Sels &lt;seppe.sels@uantwerpen.be&gt;.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

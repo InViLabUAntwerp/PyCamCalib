@@ -47,19 +47,19 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         # vbox.setMenuEnabled(False)
         # self.graphicsView.scene.contextMenu.hide()
 
-        self.calibrator = CameraCalibrator()
+        self.calibrator: CameraCalibrator = CameraCalibrator()
         """Calibrator which will be used for calibration."""
 
-        self.calibration_parameters = CalibrationParameters()
+        self.calibration_parameters: CalibrationParameters = CalibrationParameters()
         """Object where all calibration parameters are stored."""
 
-        self.filenames = []
+        self.filenames: list = []
         """List of all selected file names."""
 
-        self.filter = ''
+        self.filter: str = ''
         """Which filter was used when selecting files."""
 
-        self.image_names = []
+        self.image_names: list = []
         """List of all loaded images. These are either the file names or indices."""
 
         self.logger = logging.getLogger(__name__)
@@ -413,8 +413,7 @@ class CalibrateCameraWorker(QObject):
                         message = 0
                     else:
                         message = -1
-                    self.app.calibrator.height = image.shape[0]
-                    self.app.calibrator.width = image.shape[1]
+                    self.app.calibrator.sensor_dimensions = np.array([image.shape[1], image.shape[0]])
                     self.app.calibration_parameters = self.app.calibrator.opencv_calibration(image_points_list,
                                                                                              object_points_list)
         finally:

@@ -25,6 +25,7 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx_autodoc_typehints']
 
 autosummary_generate = True
+autosummary_mock_imports = ['camera_calibration_toolbox.gui']
 
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'numpy': ('https://numpy.org/doc/1.21/', None)}
@@ -41,11 +42,4 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
 
-def setup(app):
-    app.connect("autodoc-skip-member", autodoc_skip_member_callback)
 
-
-def autodoc_skip_member_callback(app, what, name, obj, skip, options):
-    exclusions = ('../../calibration_toolbox/gui/',)
-    exclude = name in exclusions
-    return skip or exclude

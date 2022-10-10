@@ -3,15 +3,15 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Calibration toolbox documentation
-=================================
+Camera calibration toolbox
+==========================
 
 .. autosummary::
    :toctree: _autosummary
    :template: custom-module-template.rst
    :recursive:
 
-   calibration_toolbox
+   camera_calibration_toolbox
 
 
 .. toctree::

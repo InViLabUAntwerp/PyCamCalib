@@ -26,7 +26,7 @@ class DistortionPlotWidget(QWidget):
         self.axes.set_ylabel('Vertical')
         self.canvas.show()
 
-    def plot_distortion(self, sensor_size: Tuple[int, int], m: npt.NDArray[np.float64],
+    def plot_distortion(self, sensor_size: npt.NDArray[np.int32], m: npt.NDArray[np.float64],
                         d: npt.NDArray[np.float64]) -> None:
         """Plot camera distortion in the plot widget."""
         width = sensor_size[0]
@@ -108,7 +108,7 @@ class ReprojErrPlotWidget(QWidget):
                     break
 
     def plot_reproj_error(self, per_view_err: npt.NDArray[np.float64], image_indices: npt.NDArray[np.float64],
-                          rms_reproj_error: float) -> None:
+                          rms_reproj_error: np.float64) -> None:
         """Plot the re-projection errors."""
         self.axes.cla()
         self.bar_status = np.ones(len(image_indices))
