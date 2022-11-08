@@ -72,11 +72,11 @@ class FeatureDetector:
                         image = image[:, :, 0]
 
                 if normalize:
-                    image = _normalize_image(image)
+                    image = self._normalize_image(image)
                 else:
                     data_type = image.dtype
                     if data_type != 'uint8':
-                        image = _recast_to_uint8(image)
+                        image = self._recast_to_uint8(image)
 
                 if invert:
                     image = np.invert(image)
@@ -110,6 +110,30 @@ class FeatureDetector:
 
         return calibration_feature
 
+    def _normalize_image(self, image: npt.NDArray) -> npt.NDArray[np.uint8]:
+        """Normalize the image."""
+        image = image.astype('double')
+        minimum = np.amin(image)
+        maximum = np.amax(image)
+        return ((image - minimum) / (maximum - minimum) * 255).astype('uint8')
+
+    def _recast_to_uint8(self, image: npt.NDArray) -> npt.NDArray[np.uint8]:
+        """Recast the image to uint8."""
+        logger = logging.getLogger('__name__')
+        if image.dtype == 'uint16':
+            image = image.astype('double')
+            image = (image / 65535 * 255).astype('uint8')
+            logger.info("Converted image to uint8 without normalization.")
+        else:
+            image = image.astype('double')
+            if np.amax(image) <= 1 and np.amin(image) >= 0:
+                image = (image * 255).astype('uint8')
+                logger.info("Converted image to uint8 without normalization.")
+            else:
+                image = self._normalize_image(image)
+                logger.info("Converted image to uint8 with normalization.")
+        return image
+
 
 class CalibrationFeature:
     """Object that stores all the data related to the calibration feature detection of an image."""
@@ -129,29 +153,3 @@ class CalibrationFeature:
 
         self.feature_image: npt.NDArray[np.uint8] = feature_image
         """(converted) RGB image that was used for feature detection with feature points if detection was successful."""
-
-
-def _normalize_image(image: npt.NDArray) -> npt.NDArray[np.uint8]:
-    """Normalize the image."""
-    image = image.astype('double')
-    minimum = np.amin(image)
-    maximum = np.amax(image)
-    return ((image - minimum) / (maximum - minimum) * 255).astype('uint8')
-
-
-def _recast_to_uint8(image: npt.NDArray) -> npt.NDArray[np.uint8]:
-    """Recast the image to uint8."""
-    logger = logging.getLogger('__name__')
-    if image.dtype == 'uint16':
-        image = image.astype('double')
-        image = (image / 65535 * 255).astype('uint8')
-        logger.info("Converted image to uint8 without normalization.")
-    else:
-        image = image.astype('double')
-        if np.amax(image) <= 1 and np.amin(image) >= 0:
-            image = (image * 255).astype('uint8')
-            logger.info("Converted image to uint8 without normalization.")
-        else:
-            image = _normalize_image(image)
-            logger.info("Converted image to uint8 with normalization.")
-    return image
