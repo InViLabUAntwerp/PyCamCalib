@@ -1,12 +1,14 @@
 """Module that contains the main code for the GUI."""
 
-from PySide6.QtCore import Signal, QThread, QObject
+from PySide6.QtCore import Signal, QThread, QObject, QSize
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QListWidgetItem
+from PySide6.QtGui import QIcon, QPixmap
 from camera_calibration_toolbox.core.exceptions import ImageError, TagError
 from camera_calibration_toolbox.gui.calibration_app_ui import Ui_CalibrationApp
 from camera_calibration_toolbox.core.feature_detection import FeatureDetector
 from camera_calibration_toolbox.core.camera_calibration import CameraCalibrator
 from camera_calibration_toolbox.core.camera_calibration import CalibrationParameters
+from importlib_resources import files
 import os
 import h5py
 import cv2
@@ -29,6 +31,12 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         """Class constructor."""
         super().__init__()
         self.setupUi(self)
+        icon = QIcon()
+        icon_file = files('camera_calibration_toolbox.gui.resources').joinpath('Logo_InViLab_Icon_color.jpg')
+        icon.addFile(str(icon_file), QSize(), QIcon.Normal, QIcon.Off)
+        self.setWindowIcon(icon)
+        logo_file = files('camera_calibration_toolbox.gui.resources').joinpath('Logo.jpg')
+        self.logoLabel.setPixmap(QPixmap(str(logo_file)))
         self.browseButton.clicked.connect(self.select_files)
         self.calibrateButton.clicked.connect(self.calibrate_camera)
         self.removeOutliersButton.clicked.connect(self.remove_outliers_pressed)
@@ -43,9 +51,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.graphicsView.ui.histogram.hide()
         self.image_title = pg.TextItem("", color='r')
         self.graphicsView.view.addItem(self.image_title)
-        # self.graphicsView.setMenuEnabled(False)
-        # vbox.setMenuEnabled(False)
-        # self.graphicsView.scene.contextMenu.hide()
+        self.graphicsView.getView().menu = None
 
         self.calibrator: CameraCalibrator = CameraCalibrator()
         """Calibrator which will be used for calibration."""
@@ -65,11 +71,10 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.logger = logging.getLogger(__name__)
         self.data_class_available = data_class_available
         if not self.data_class_available:
-            self.logger.warning("Could not find DataClass module. You will be unable to load SEP and HDF5 files.")
+            self.logger.warning("Could not find DataClass module. You will be unable to load ``DataClass`` files.")
 
     def select_files(self) -> None:
         """Open file explorer to select files."""
-
         if self.data_class_available:
             self.filenames, self.filter = QFileDialog.getOpenFileNames(self, "Select calibration file(s).",
                                                                        filter="Image files (*.png *.jpg *.jpeg *.bmp "
@@ -95,19 +100,17 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.headerField.setEnabled(False)
             self.headerField.clear()
 
-    def load_image_data(self, full_path) -> npt.NDArray:
-
+    def load_image_data(self, full_path: str) -> npt.NDArray:
+        """Load image data from file."""
         if self.filter.startswith("Image"):
             image_array = cv2.imread(full_path)
         elif self.filter.startswith("DataClass"):
             try:
-                file = GenericDataClass().Open(full_path)
+                with GenericDataClass().Open(full_path) as file:
+                    n_frames = file.numberOfFrames
+                    image_array = file.GetFrame(0, n_frames - 1)
             except KeyError:
                 raise ImageError("Selected file is not compatible with the InViLab ``DataClass`` and cannot be loaded.")
-            else:
-                n_frames = file.numberOfFrames
-                image_array = file.GetFrame(0, n_frames - 1)
-                file.Close()
         else:
             with h5py.File(full_path, "r") as file:
                 key = self.headerField.text()
@@ -115,7 +118,6 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
                     image_array = file[key][()]
                 except KeyError:
                     raise KeyError("Key provided in ``data header field`` is not valid.")
-
         return image_array
 
     def calibrate_camera(self) -> None:
@@ -279,7 +281,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         """Update the parameters tab after calibration."""
         intrinsics_matrix = self.calibration_parameters.get_intrinsics_matrix_opencv()
         distortion_coeffs = self.calibration_parameters.get_distortion_coeffs_opencv()
-        sensor_dimensions = self.calibration_parameters.get_sensor_dimensions()
+        sensor_dimensions = self.calibration_parameters.sensor_dimensions
         self.distortionPlot.plot_distortion(sensor_dimensions, intrinsics_matrix, distortion_coeffs)
 
         self.intrinsicsTable.item(0, 0).setText(f'{round(self.calibration_parameters.f[0], 4):.4f}')

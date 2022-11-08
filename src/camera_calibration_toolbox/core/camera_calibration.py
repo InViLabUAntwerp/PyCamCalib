@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from camera_calibration_toolbox.core.exceptions import ImageError, CalibrationError
 from camera_calibration_toolbox.core.feature_detection import FeatureDetector
 import logging
+import random
 
 
 class CameraCalibrator:
@@ -55,6 +56,7 @@ class CameraCalibrator:
         if not isinstance(image_array, np.ndarray):
             raise TypeError("``image_array`` should be a numpy array.")
 
+        self._logger.info("Detecting features")
         self.construct_feature_list(image_array, tag, normalize, invert)
         image_points_list, object_points_list = self.construct_points_lists([])
         if not image_points_list:
@@ -63,6 +65,7 @@ class CameraCalibrator:
             self._logger.warning("Only detected features for " + str(len(image_points_list))
                                  + " images. Features from at least 11 images are necessary for an accurate calibration.")
 
+        self._logger.info("Performing calibration")
         calibration_parameters = self.opencv_calibration(image_points_list, object_points_list)
 
         return calibration_parameters
@@ -109,7 +112,7 @@ class CameraCalibrator:
                 feature = feature_detector.detect_feature(image_array[:, :, idx], normalize, invert)
                 self.feature_list.append(feature)
                 if not feature.score:
-                    self._logger.info("Failed feature detection on image nr " + str(idx+1) + ".")
+                    self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
         elif len(image_array.shape) == 4:
             height, width, n_channels, n_images = image_array.shape
             self.sensor_dimensions = np.array([width, height])
@@ -160,10 +163,25 @@ class CameraCalibrator:
         This method is used by :py:meth:`calibrate_camera` and :py:meth:`calibrate_indices`. Unless you want to
         perform the calibration steps separately, you should not use this method.
         """
+        n_images = len(image_points_list)
+        if n_images >= 20:
+            # Get initial parameters with lower amount of samples in order to speed up calibration
+            selected = random.sample(range(n_images), 11)
+            s_image_points_list = [image_points_list[i] for i in selected]
+            s_object_points_list = [object_points_list[i] for i in selected]
+            _, s_intrinsics_matrix, s_dist_coeffs, _, _ = cv2.calibrateCamera(s_object_points_list, s_image_points_list,
+                                                                              self.sensor_dimensions, None, None)
+            rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
+            per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
+                                                       s_intrinsics_matrix, s_dist_coeffs,
+                                                       flags=cv2.CALIB_USE_INTRINSIC_GUESS)
+        else:
+            # Just perform calibration with all samples
+            rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
+            per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
+                                                       None, None)
 
-        rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, per_view_err \
-            = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions, None, None)
-
+        # Convert some parameter datatypes and reshape some matrices
         self.rms_reproj_error = np.float64(rms_reproj_error)
         self.per_view_err = np.squeeze(per_view_err)
         dist_coeffs = np.squeeze(dist_coeffs)
@@ -171,6 +189,7 @@ class CameraCalibrator:
         r_vecs = np.squeeze(np.array(r_vecs))
         t_vecs = np.squeeze(np.array(t_vecs))
 
+        # Save parameters in CalibrationParameters object
         calibration_parameters = CalibrationParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs,
                                                      t_vecs, intrinsics_std, extrinsics_std, self.per_view_err,
@@ -231,13 +250,6 @@ class CalibrationParameters:
 
         self.sensor_dimensions: npt.NDArray[np.int32] = np.zeros(2, dtype=np.int32)
         """Sensor dimensions in pixels (w, h)."""
-
-    def get_sensor_dimensions(self) -> Tuple[np.int32, np.int32]:
-        """Get the camera sensor dimensions in pixels.
-
-        :returns: A tuple with the sensor width and height in pixels.
-        """
-        return self.sensor_dimensions[0], self.sensor_dimensions[1]
 
     def get_afov(self) -> Tuple[np.float64, np.float64]:
         """Get the angular field of view in degrees.
@@ -361,7 +373,8 @@ class CalibrationParameters:
                 file.create_dataset("geometric_calibration/radial_dist_coeffs", data=self.radial_dist_coeffs)
                 file.create_dataset("geometric_calibration/radial_dist_coeffs_std", data=self.radial_dist_coeffs_std)
                 file.create_dataset("geometric_calibration/tangential_dist_coeffs", data=self.tangential_dist_coeffs)
-                file.create_dataset("geometric_calibration/tangential_dist_coeffs_std", data=self.tangential_dist_coeffs_std)
+                file.create_dataset("geometric_calibration/tangential_dist_coeffs_std",
+                                    data=self.tangential_dist_coeffs_std)
                 file.create_dataset("geometric_calibration/r_vecs", data=self.r_vecs)
                 file.create_dataset("geometric_calibration/t_vecs", data=self.t_vecs)
                 file.create_dataset("geometric_calibration/extrinsics_std", data=self.extrinsics_std)

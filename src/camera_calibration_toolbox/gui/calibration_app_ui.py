@@ -340,15 +340,14 @@ class Ui_CalibrationApp(object):
 
         self.gridLayout.addWidget(self.label_2, 4, 0, 1, 1)
 
-        self.label_6 = QLabel(self.groupBox)
-        self.label_6.setObjectName(u"label_6")
-        self.label_6.setGeometry(QRect(10, 590, 251, 131))
-        self.label_6.setPixmap(QPixmap(u"../resources/Logo.jpg"))
-        self.label_6.setScaledContents(True)
+        self.logoLabel = QLabel(self.groupBox)
+        self.logoLabel.setObjectName(u"logoLabel")
+        self.logoLabel.setGeometry(QRect(10, 590, 251, 131))
+        self.logoLabel.setScaledContents(True)
         CalibrationApp.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(CalibrationApp)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 989, 26))
+        self.menubar.setGeometry(QRect(0, 0, 989, 22))
         CalibrationApp.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(CalibrationApp)
         self.statusbar.setObjectName(u"statusbar")
@@ -464,6 +463,6 @@ class Ui_CalibrationApp(object):
         self.browseButton.setText(QCoreApplication.translate("CalibrationApp", u"Browse", None))
         self.label.setText(QCoreApplication.translate("CalibrationApp", u"File(s):", None))
         self.label_2.setText(QCoreApplication.translate("CalibrationApp", u"Data header:", None))
-        self.label_6.setText("")
+        self.logoLabel.setText("")
     # retranslateUi
 
