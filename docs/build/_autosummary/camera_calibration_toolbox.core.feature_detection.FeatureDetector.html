@@ -96,13 +96,13 @@ to detect the same calibration feature in several images.</p>
 <dd><p>Class constructor.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>tag</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>) – Tag that describes the feature which needs to be detected.</p>
+<dd class="field-odd"><p><strong>tag</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>) – Tag that describes the feature which needs to be detected.</p>
 </dd>
 <dt class="field-even">Raises</dt>
 <dd class="field-even"><ul class="simple">
 <li><p><a class="reference internal" href="camera_calibration_toolbox.core.exceptions.TagError.html#camera_calibration_toolbox.core.exceptions.TagError" title="camera_calibration_toolbox.core.exceptions.TagError"><strong>TagError</strong></a> – When an invalid tag is used. This can occur when the wrong prefix is used, the tag is not
 long enough or the tail doesn’t contain numeric data.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.10)"><strong>TypeError</strong></a> – When tag is not a string.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.11)"><strong>TypeError</strong></a> – When tag is not a string.</p></li>
 </ul>
 </dd>
 </dl>
@@ -146,7 +146,7 @@ long enough or the tail doesn’t contain numeric data.</p></li>
 </table>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size">
-<span class="sig-name descname"><span class="pre">board_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Tuple" title="(in Python v3.10)"><span class="pre">Tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.10)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size" title="Permalink to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">board_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Tuple" title="(in Python v3.11)"><span class="pre">Tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.11)"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.board_size" title="Permalink to this definition"></a></dt>
 <dd><p>Amount of inner corners in (rows, columns).</p>
 </dd></dl>
 
@@ -157,15 +157,15 @@ long enough or the tail doesn’t contain numeric data.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>image</strong> (<a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.10)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>, <a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.dtype.html#numpy.dtype" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dtype</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.TypeVar" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code></a>(<code class="docutils literal notranslate"><span class="pre">ScalarType</span></code>, bound= <a class="reference external" href="https://numpy.org/doc/1.21/reference/arrays.scalars.html#numpy.generic" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">generic</span></code></a>, covariant=True)]]) – One- or multi-channel image.</p></li>
-<li><p><strong>normalize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to normalize the image or not, defaults to False.</p></li>
-<li><p><strong>invert</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to invert the image or not, defaults to False.</p></li>
+<li><p><strong>image</strong> (<a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.11)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></a>, <a class="reference external" href="https://numpy.org/doc/1.21/reference/generated/numpy.dtype.html#numpy.dtype" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dtype</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.TypeVar" title="(in Python v3.11)"><code class="xref py py-class docutils literal notranslate"><span class="pre">TypeVar</span></code></a>(<code class="docutils literal notranslate"><span class="pre">ScalarType</span></code>, bound= <a class="reference external" href="https://numpy.org/doc/1.21/reference/arrays.scalars.html#numpy.generic" title="(in NumPy v1.21)"><code class="xref py py-class docutils literal notranslate"><span class="pre">generic</span></code></a>, covariant=True)]]) – One- or multi-channel image.</p></li>
+<li><p><strong>normalize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to normalize the image or not, defaults to False.</p></li>
+<li><p><strong>invert</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.11)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a>) – Whether to invert the image or not, defaults to False.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises</dt>
 <dd class="field-even"><ul class="simple">
 <li><p><a class="reference internal" href="camera_calibration_toolbox.core.exceptions.ImageError.html#camera_calibration_toolbox.core.exceptions.ImageError" title="camera_calibration_toolbox.core.exceptions.ImageError"><strong>ImageError</strong></a> – When image is not 2- or 3-dimensional.</p></li>
-<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.10)"><strong>TypeError</strong></a> – When the type of image is not a numpy array.</p></li>
+<li><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#TypeError" title="(in Python v3.11)"><strong>TypeError</strong></a> – When the type of image is not a numpy array.</p></li>
 </ul>
 </dd>
 <dt class="field-odd">Return type</dt>
@@ -179,19 +179,19 @@ long enough or the tail doesn’t contain numeric data.</p></li>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type">
-<span class="sig-name descname"><span class="pre">feature_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type" title="Permalink to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">feature_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.feature_type" title="Permalink to this definition"></a></dt>
 <dd><p>Which type of feature the detector will look for.</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features">
-<span class="sig-name descname"><span class="pre">space_between_features</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.10)"><span class="pre">float</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features" title="Permalink to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">space_between_features</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.11)"><span class="pre">float</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.space_between_features" title="Permalink to this definition"></a></dt>
 <dd><p>Distance between feature points in <a class="reference internal" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units"><code class="xref py py-data docutils literal notranslate"><span class="pre">units</span></code></a>.</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="camera_calibration_toolbox.core.feature_detection.FeatureDetector.units">
-<span class="sig-name descname"><span class="pre">units</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.10)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="Permalink to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">units</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.11)"><span class="pre">str</span></a></em><a class="headerlink" href="#camera_calibration_toolbox.core.feature_detection.FeatureDetector.units" title="Permalink to this definition"></a></dt>
 <dd><p>Units in object-space between feature points.</p>
 </dd></dl>
 

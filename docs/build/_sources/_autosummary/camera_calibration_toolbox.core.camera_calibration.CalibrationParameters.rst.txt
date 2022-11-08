@@ -1,4 +1,4 @@
-camera\_calibration\_toolbox.core.camera\_calibration.CalibrationParameters
+﻿camera\_calibration\_toolbox.core.camera\_calibration.CalibrationParameters
 ===========================================================================
 
 .. currentmodule:: camera_calibration_toolbox.core.camera_calibration
@@ -19,7 +19,6 @@ camera\_calibration\_toolbox.core.camera\_calibration.CalibrationParameters
       ~CalibrationParameters.get_distortion_coeffs_opencv
       ~CalibrationParameters.get_intrinsics_matrix_opencv
       ~CalibrationParameters.get_remap_parameters
-      ~CalibrationParameters.get_sensor_dimensions
       ~CalibrationParameters.load_parameters
       ~CalibrationParameters.save_parameters
       ~CalibrationParameters.set_parameters_opencv
