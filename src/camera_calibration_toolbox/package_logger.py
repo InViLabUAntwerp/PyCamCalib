@@ -17,7 +17,7 @@ def configure_logger(level: str = 'WARNING') -> None:
         if not logger.handlers:
             handler = logging.StreamHandler()
             handler.name = "basic_handler"
-            formatter = logging.Formatter('%(thread)d - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
             handler.setFormatter(formatter)
             logger.addHandler(handler)
         if level == 'CRITICAL':

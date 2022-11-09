@@ -1,10 +1,9 @@
 """Module that contains all custom widgets for the GUI."""
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QMainWindow
 import numpy as np
-from typing import Tuple
 import numpy.typing as npt
 
 
