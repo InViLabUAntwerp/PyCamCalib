@@ -14,7 +14,8 @@ results, removing distortion and calculating the FOV.
 ## Installation
 
 1. Clone the repository
-2. Install the dependencies from `requirements.txt`
+2. Install the dependencies from `requirements.txt`. There is a bug in PySide6 ver 6.4.0 and onward when working with
+   the matplotlib backend.
 ```
 pip install -r requirements.txt
 ```
