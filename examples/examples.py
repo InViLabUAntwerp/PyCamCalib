@@ -45,7 +45,7 @@ rms_reproj_error = calibrator.rms_reproj_error
 plot_reproj_error(per_view_err, image_indices, rms_reproj_error)
 
 #%% Visualize distortion
-sensor_size = calibration_parameters.get_sensor_dimensions()
+sensor_size = calibration_parameters.sensor_dimensions
 intrinsics_matrix = calibration_parameters.get_intrinsics_matrix_opencv()
 distortion_coeffs = calibration_parameters.get_distortion_coeffs_opencv()
 plot_distortion(sensor_size, intrinsics_matrix, distortion_coeffs)

@@ -290,7 +290,7 @@ class CalibrationParameters:
         """
         intrinsics_matrix = self.get_intrinsics_matrix_opencv()
         distortion_coeffs = self.get_distortion_coeffs_opencv()
-        dimensions = self.get_sensor_dimensions()
+        dimensions = self.sensor_dimensions
         new_intrinsics_matrix, roi = cv2.getOptimalNewCameraMatrix(intrinsics_matrix, distortion_coeffs, dimensions,
                                                                    alpha)
         map_x, map_y = cv2.initUndistortRectifyMap(intrinsics_matrix, distortion_coeffs, None, new_intrinsics_matrix,
