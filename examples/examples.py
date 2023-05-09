@@ -1,6 +1,6 @@
 """Collection of example scripts for the camera calibration toolbox.
 
-Some of the scripts need to be executed in order.
+Some scripts need to be executed in order.
 """
 
 #%% Imports
@@ -12,7 +12,6 @@ from camera_calibration_toolbox.core.camera_calibration import (CameraCalibrator
                                                                 plot_reproj_error, plot_distortion, calculate_fov)
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.package_logger import configure_logger
-
 #%% Configure logger (optional)
 configure_logger()
 
@@ -23,19 +22,28 @@ n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
     if image_idx == 0:
-        h, w, c = image.shape
-        image_array = np.zeros((h, w, c, n_images), dtype='uint8')
-    image_array[:, :, :, image_idx] = image
+        image_array = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
+    image_array[..., image_idx] = image
 
 #%% Perform calibration
 calibrator = CameraCalibrator()
-calibration_parameters = calibrator.calibrate_camera(image_array, 'NCH0000040530')
+calibration_parameters = calibrator.calibrate_camera(image_array, 30)
 
 #%% Plot all images with features if features were detected
-for feature_image_idx in range(n_images):
+for image_idx in range(n_images):
     plt.cla()
-    plt.imshow(calibrator.feature_list[feature_image_idx].feature_image)
-    plt.title('Image nr ' + str(feature_image_idx+1))
+    if len(image.shape) == 3:
+        plt.imshow(cv2.cvtColor(image_array[..., image_idx], cv2.COLOR_BGR2RGB))
+    else:
+        plt.imshow(image_array[..., image_idx])
+    plt.plot(calibrator.feature_list[image_idx].image_points[:, 0],
+             calibrator.feature_list[image_idx].image_points[:, 1],
+             'o', color='lime')
+    for i in range(0, calibrator.feature_list[image_idx].image_points.shape[0]):
+        plt.text(calibrator.feature_list[image_idx].image_points[i, 0] + 5,
+                 calibrator.feature_list[image_idx].image_points[i, 1] - 5,
+                 i + 1, color="lime")
+    plt.title('Image nr ' + str(image_idx+1))
     plt.show()
 
 #%% Plot reprojection errors

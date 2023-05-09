@@ -1,12 +1,6 @@
 """Module that contains custom exceptions used by the camera calibration toolbox."""
 
 
-class TagError(Exception):
-    """Raised when there is an issue with the feature tag."""
-
-    pass
-
-
 class ImageError(Exception):
     """Raised when there is an issue with the image."""
 

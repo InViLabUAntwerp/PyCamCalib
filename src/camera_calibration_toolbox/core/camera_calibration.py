@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 import numpy.typing as npt
-from typing import Tuple
+from typing import Tuple, Optional
 import cv2
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from camera_calibration_toolbox.core.exceptions import ImageError, CalibrationError
+from camera_calibration_toolbox.core.exceptions import CalibrationError
 from camera_calibration_toolbox.core.feature_detection import FeatureDetector
 import logging
-import random
 
 
 class CameraCalibrator:
@@ -35,8 +34,10 @@ class CameraCalibrator:
         self.sensor_dimensions = np.zeros(2, dtype=np.int32)
         """Sensor dimensions in pixels (w, h)."""
 
-    def calibrate_camera(self, image_array: npt.NDArray, tag: str, normalize: bool = False,
-                         invert: bool = False) -> CalibrationParameters:
+    def calibrate_camera(self, image_array: npt.NDArray, space_between_features: float,
+                         board_size: Optional[Tuple[int, int]] = None,
+                         marker: Optional[Tuple[int, int]] = None,
+                         absolute: bool = False, **kwargs) -> CalibrationParameters:
         """Calibrate camera.
 
         Calibrate a camera with an array of images of a calibration target. At least 11 good images are required for
@@ -44,21 +45,26 @@ class CameraCalibrator:
 
         :param image_array: Array containing all images that will be used for calibration. It can either be a 3D array
             (h,w,n) for grayscale images or a 4D array (h,w,c,n) for multi channel images.
-        :param tag: Feature tag of the calibration target that needs to be detected.
-        :param normalize: Specifies whether the images should be normalized before feature detection is carried out,
-            defaults to False.
-        :param invert: Specifies whether the images should be inverted before feature detection is carried out,
-            defaults to False.
+        :param space_between_features: Checker size in mm.
+        :param board_size: Size of the board in (rows, columns)
+        :param marker: Position of the marker if there is a marker present. Not implemented yet.
+        :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
+           known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
+           Either `board_size` or `marker` needs to be known in order to use this option.
         :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When image_array is not a numpy array or calibrator is not a string.
+        :raises TypeError: When image_array is not a numpy array.
+        :raises RuntimeError: When `absolute` is set to True but `board_size` and `marker` are not given
         :raises CalibrationError: When no features were detected in any of the images.
         """
         if not isinstance(image_array, np.ndarray):
             raise TypeError("``image_array`` should be a numpy array.")
+        if absolute:
+            if board_size is None:
+                raise TypeError("If `absolute` is set to True `board_size` needs to be known.")
 
         self._logger.info("Detecting features")
-        self.construct_feature_list(image_array, tag, normalize, invert)
-        image_points_list, object_points_list = self.construct_points_lists([])
+        self.construct_feature_list(image_array, space_between_features, board_size, marker, **kwargs)
+        image_points_list, object_points_list = self.construct_points_lists([], absolute)
         if not image_points_list:
             raise CalibrationError("Failed to detect features in all images, unable to perform calibration.")
         elif len(image_points_list) < 11:
@@ -70,7 +76,7 @@ class CameraCalibrator:
 
         return calibration_parameters
 
-    def calibrate_indices(self, indices: list) -> CalibrationParameters:
+    def calibrate_indices(self, indices: list, absolute: bool = False) -> CalibrationParameters:
         """Repeat calibration with selected samples.
 
         Repeat the camera calibration with the samples specified in indices. This can be used to improve the
@@ -79,6 +85,8 @@ class CameraCalibrator:
         :param indices: A list that contains the indices that correspond to the elements in :py:data:`feature_list`
            which should be used for a new calibration. Passing an empty list will perform a calibration with all good
            images.
+       :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
+          known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
         :returns: An object that contains all calibration parameter data.
         :raises TypeError: When indices is not a list.
         :raises CalibrationError: When no images with detected features were selected.
@@ -86,7 +94,7 @@ class CameraCalibrator:
         if not isinstance(indices, list):
             raise TypeError("``indices`` should be a list.")
 
-        image_points_list, object_points_list = self.construct_points_lists(indices)
+        image_points_list, object_points_list = self.construct_points_lists(indices, absolute)
         if not image_points_list:
             raise CalibrationError("No images with detected features remain, unable to perform calibration.")
         if len(image_points_list) < 11:
@@ -97,35 +105,24 @@ class CameraCalibrator:
 
         return calibration_parameters
 
-    def construct_feature_list(self, image_array: npt.NDArray, tag: str, normalize: bool, invert: bool) -> None:
+    def construct_feature_list(self, image_array: npt.NDArray, space_between_features, board_size, marker,
+                               **kwargs) -> None:
         """Construct a list with the calibration features for all images in the image_array.
 
         This method is used by :py:meth:`calibrate_camera`. Unless you want to perform the calibration steps
         separately, you should not use this method.
         """
         self.feature_list = []
-        feature_detector = FeatureDetector(tag)
-        if len(image_array.shape) == 3:
-            height, width, n_images = image_array.shape
-            self.sensor_dimensions = np.array([width, height])
-            for idx in range(n_images):
-                feature = feature_detector.detect_feature(image_array[:, :, idx], normalize, invert)
-                self.feature_list.append(feature)
-                if not feature.score:
-                    self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
-        elif len(image_array.shape) == 4:
-            height, width, n_channels, n_images = image_array.shape
-            self.sensor_dimensions = np.array([width, height])
-            for idx in range(n_images):
-                feature = feature_detector.detect_feature(image_array[:, :, :, idx], normalize, invert)
-                self.feature_list.append(feature)
-                if not feature.score:
-                    self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
-        else:
-            raise ImageError("``image_array`` should have 2 or 3 dimensions, the given array has  "
-                             + str(len(image_array.shape)) + " dimensions.")
+        feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        n_images = image_array.shape[-1]
+        self.sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
+        for idx in range(n_images):
+            feature = feature_detector.detect_feature(image_array[..., idx])
+            self.feature_list.append(feature)
+            if not feature.score > 0:
+                self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
 
-    def construct_points_lists(self, indices: list) -> Tuple[list, list]:
+    def construct_points_lists(self, indices: list, absolute: bool = False) -> Tuple[list, list]:
         """Construct lists of image points and object points for calibration.
 
         If indices is empty all images where a feature was detected will be used, otherwise only images that
@@ -133,6 +130,11 @@ class CameraCalibrator:
         :py:meth:`calibrate_indices`. Unless you want to perform the calibration steps separately, you should not use
         this method.
         """
+        if absolute:
+            minimum_score = 2
+        else:
+            minimum_score = 1
+
         self.indices = []
         object_points_list = []
         image_points_list = []
@@ -143,14 +145,14 @@ class CameraCalibrator:
                 except IndexError:
                     pass
                 else:
-                    if feature.score:
+                    if feature.score >= minimum_score:
                         image_points_list.append(feature.image_points)
                         object_points_list.append(feature.object_points)
                         self.indices.append(idx)
         else:
             for idx in range(len(self.feature_list)):
                 feature = self.feature_list[idx]
-                if feature.score:
+                if feature.score >= minimum_score:
                     image_points_list.append(feature.image_points)
                     object_points_list.append(feature.object_points)
                     self.indices.append(idx)
@@ -164,22 +166,10 @@ class CameraCalibrator:
         perform the calibration steps separately, you should not use this method.
         """
         n_images = len(image_points_list)
-        if n_images >= 20:
-            # Get initial parameters with lower amount of samples in order to speed up calibration
-            selected = random.sample(range(n_images), 11)
-            s_image_points_list = [image_points_list[i] for i in selected]
-            s_object_points_list = [object_points_list[i] for i in selected]
-            _, s_intrinsics_matrix, s_dist_coeffs, _, _ = cv2.calibrateCamera(s_object_points_list, s_image_points_list,
-                                                                              self.sensor_dimensions, None, None)
-            rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
-            per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
-                                                       s_intrinsics_matrix, s_dist_coeffs,
-                                                       flags=cv2.CALIB_USE_INTRINSIC_GUESS)
-        else:
-            # Just perform calibration with all samples
-            rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
-            per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
-                                                       None, None)
+
+        rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
+        per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
+                                                   None, None)
 
         # Convert some parameter datatypes and reshape some matrices
         self.rms_reproj_error = np.float64(rms_reproj_error)
@@ -215,10 +205,10 @@ class CalibrationParameters:
         self.c_std: npt.NDArray[np.float64] = np.zeros(2)
         """Standard deviation of principal point (x, y)."""
 
-        self.s: np.int32 = np.int32(0)
+        self.s: np.float64 = np.float64(0)
         """Skew."""
 
-        self.s_std: np.int32 = np.int32(0)
+        self.s_std: np.float64 = np.float64(0)
         """Standard deviation of skew."""
 
         self.radial_dist_coeffs: npt.NDArray[np.float64] = np.zeros(3)
@@ -309,8 +299,8 @@ class CalibrationParameters:
         self.f_std = np.array([intrinsics_std[0], intrinsics_std[1]])
         self.c = np.array([intrinsics_matrix[0, 2], intrinsics_matrix[1, 2]])
         self.c_std = np.array([intrinsics_std[2], intrinsics_std[3]])
-        self.s = np.int32(0)
-        self.s_std = np.int32(0)
+        self.s = np.float64(0)
+        self.s_std = np.float64(0)
         self.radial_dist_coeffs = np.array([dist_coeffs[0], dist_coeffs[1], dist_coeffs[2]])
         self.radial_dist_coeffs_std = np.array([intrinsics_std[4], intrinsics_std[5], intrinsics_std[8]])
         self.tangential_dist_coeffs = np.array([dist_coeffs[2], dist_coeffs[3]])
@@ -398,6 +388,28 @@ class CalibrationParameters:
                 file["geometric_calibration/per_view_err"][()] = self.per_view_err
                 file["geometric_calibration/rms_reproj_err"][()] = self.rms_reproj_error
                 file["geometric_calibration/sensor_dimensions"][()] = self.sensor_dimensions
+
+    def load_parameters_matlab(self, full_path: str) -> None:
+        """Load calibration parameters matlab .h5 file into object.
+
+        :param full_path: Full filepath with directory and filename.
+        :raises KeyError: If there are no calibration parameters in the h5 file.
+        :raises OSError: If the path contains forbidden characters or an incompatible file is used.
+        :raises FileNotFoundError: If specified file does not exist.
+        """
+        with h5py.File(full_path, "r") as file:
+            try:
+                self.f = np.squeeze(file["geometric_calibration/f"][()])
+                self.f_std = np.squeeze(file["geometric_calibration/f_std"][()])
+                self.c = np.squeeze(file["geometric_calibration/c"][()])
+                self.c_std = np.squeeze(file["geometric_calibration/c_std"][()])
+                self.radial_dist_coeffs = np.squeeze(file["geometric_calibration/radial_dist_coeffs"][()])
+                self.radial_dist_coeffs_std = np.squeeze(file["geometric_calibration/radial_dist_coeffs_std"][()])
+                self.per_view_err = file["geometric_calibration/per_view_err"][()]
+                self.rms_reproj_error = np.squeeze(file["geometric_calibration/rms_reproj_err"][()])
+                self.sensor_dimensions = np.squeeze(file["geometric_calibration/sensor_dimensions"][()])
+            except KeyError as e:
+                raise KeyError("File does not contain calibration parameters.") from e
 
 
 def remap_image(image: npt.NDArray, map_x: npt.NDArray, map_y: npt.NDArray,
