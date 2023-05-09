@@ -1,5 +1,4 @@
 h5py
-importlib_resources
 matplotlib >= 3.5.0
 numpy >= 1.20.0
 opencv_python_headless
@@ -10,4 +9,3 @@ sphinx-rtd-theme
 sphinx-autodoc-typehints
 pipreqs
 build
-hatchling
