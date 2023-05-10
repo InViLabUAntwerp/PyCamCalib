@@ -8,7 +8,7 @@ from os import listdir
 from os.path import join
 import cv2
 import numpy as np
-from camera_calibration_toolbox.core.camera_calibration import (CameraCalibrator, CalibrationParameters, remap_image,
+from camera_calibration_toolbox.core.camera_calibration import (CameraCalibrator, CameraParameters, remap_image,
                                                                 plot_reproj_error, plot_distortion, calculate_fov)
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.package_logger import configure_logger
@@ -27,7 +27,7 @@ for image_idx in range(n_images):
 
 #%% Perform calibration
 calibrator = CameraCalibrator()
-calibration_parameters = calibrator.calibrate_camera(image_array, 30)
+calibration_parameters = calibrator.calibrate(image_array, 30)
 
 #%% Plot all images with features if features were detected
 for image_idx in range(n_images):
