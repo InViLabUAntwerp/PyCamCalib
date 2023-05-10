@@ -34,10 +34,13 @@ class CameraCalibrator:
         self.sensor_dimensions = np.zeros(2, dtype=np.int32)
         """Sensor dimensions in pixels (w, h)."""
 
-    def calibrate_camera(self, image_array: npt.NDArray, space_between_features: float,
-                         board_size: Optional[Tuple[int, int]] = None,
-                         marker: Optional[Tuple[int, int]] = None,
-                         absolute: bool = False, **kwargs) -> CalibrationParameters:
+        self.camera_parameters = None
+        """Object that contains all calibration parameter data."""
+
+    def calibrate(self, image_array: npt.NDArray, space_between_features: float,
+                  board_size: Optional[Tuple[int, int]] = None,
+                  marker: Optional[Tuple[int, int]] = None,
+                  absolute: bool = False, **kwargs) -> CameraParameters:
         """Calibrate camera.
 
         Calibrate a camera with an array of images of a calibration target. At least 11 good images are required for
@@ -63,7 +66,9 @@ class CameraCalibrator:
                 raise TypeError("If `absolute` is set to True `board_size` needs to be known.")
 
         self._logger.info("Detecting features")
-        self.construct_feature_list(image_array, space_between_features, board_size, marker, **kwargs)
+        self.sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
+        self.feature_list = self.construct_feature_list(image_array, space_between_features, board_size, marker,
+                                                        **kwargs)
         image_points_list, object_points_list = self.construct_points_lists([], absolute)
         if not image_points_list:
             raise CalibrationError("Failed to detect features in all images, unable to perform calibration.")
@@ -72,11 +77,11 @@ class CameraCalibrator:
                                  + " images. Features from at least 11 images are necessary for an accurate calibration.")
 
         self._logger.info("Performing calibration")
-        calibration_parameters = self.opencv_calibration(image_points_list, object_points_list)
+        self.camera_parameters = self.opencv_calibration(image_points_list, object_points_list)
 
-        return calibration_parameters
+        return self.camera_parameters
 
-    def calibrate_indices(self, indices: list, absolute: bool = False) -> CalibrationParameters:
+    def calibrate_indices(self, indices: list, absolute: bool = False) -> CameraParameters:
         """Repeat calibration with selected samples.
 
         Repeat the camera calibration with the samples specified in indices. This can be used to improve the
@@ -101,26 +106,27 @@ class CameraCalibrator:
             self._logger.warning("Only " + str(len(image_points_list))
                                  + " samples left. At least 11 samples are necessary for an accurate calibration.")
 
-        calibration_parameters = self.opencv_calibration(image_points_list, object_points_list)
+        self.camera_parameters = self.opencv_calibration(image_points_list, object_points_list)
 
-        return calibration_parameters
+        return self.camera_parameters
 
     def construct_feature_list(self, image_array: npt.NDArray, space_between_features, board_size, marker,
-                               **kwargs) -> None:
+                               **kwargs) -> list:
         """Construct a list with the calibration features for all images in the image_array.
 
         This method is used by :py:meth:`calibrate_camera`. Unless you want to perform the calibration steps
         separately, you should not use this method.
         """
-        self.feature_list = []
+        feature_list = []
         feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
         n_images = image_array.shape[-1]
-        self.sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
         for idx in range(n_images):
             feature = feature_detector.detect_feature(image_array[..., idx])
-            self.feature_list.append(feature)
+            feature_list.append(feature)
             if not feature.score > 0:
                 self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
+
+        return feature_list
 
     def construct_points_lists(self, indices: list, absolute: bool = False) -> Tuple[list, list]:
         """Construct lists of image points and object points for calibration.
@@ -138,20 +144,14 @@ class CameraCalibrator:
         self.indices = []
         object_points_list = []
         image_points_list = []
-        if indices:
-            for idx in indices:
-                try:
-                    feature = self.feature_list[idx]
-                except IndexError:
-                    pass
-                else:
-                    if feature.score >= minimum_score:
-                        image_points_list.append(feature.image_points)
-                        object_points_list.append(feature.object_points)
-                        self.indices.append(idx)
-        else:
-            for idx in range(len(self.feature_list)):
+        if not indices:
+            indices = range(len(self.feature_list))
+        for idx in indices:
+            try:  # Safeguard for when indices that don't exist are passed into the function.
                 feature = self.feature_list[idx]
+            except IndexError:
+                pass
+            else:
                 if feature.score >= minimum_score:
                     image_points_list.append(feature.image_points)
                     object_points_list.append(feature.object_points)
@@ -159,14 +159,12 @@ class CameraCalibrator:
 
         return image_points_list, object_points_list
 
-    def opencv_calibration(self, image_points_list: list, object_points_list: list) -> CalibrationParameters:
+    def opencv_calibration(self, image_points_list: list, object_points_list: list) -> CameraParameters:
         """Regular OpenCV camera calibration.
 
         This method is used by :py:meth:`calibrate_camera` and :py:meth:`calibrate_indices`. Unless you want to
         perform the calibration steps separately, you should not use this method.
         """
-        n_images = len(image_points_list)
-
         rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
         per_view_err = cv2.calibrateCameraExtended(object_points_list, image_points_list, self.sensor_dimensions,
                                                    None, None)
@@ -180,7 +178,7 @@ class CameraCalibrator:
         t_vecs = np.squeeze(np.array(t_vecs))
 
         # Save parameters in CalibrationParameters object
-        calibration_parameters = CalibrationParameters()
+        calibration_parameters = CameraParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs,
                                                      t_vecs, intrinsics_std, extrinsics_std, self.per_view_err,
                                                      self.sensor_dimensions)
@@ -188,8 +186,8 @@ class CameraCalibrator:
         return calibration_parameters
 
 
-class CalibrationParameters:
-    """Object that contains all calibration parameters."""
+class CameraParameters:
+    """Object that contains all camera calibration parameters."""
 
     def __init__(self) -> None:
         """Class constructor."""
@@ -410,6 +408,152 @@ class CalibrationParameters:
                 self.sensor_dimensions = np.squeeze(file["geometric_calibration/sensor_dimensions"][()])
             except KeyError as e:
                 raise KeyError("File does not contain calibration parameters.") from e
+
+
+class StereoCalibrator:
+    def __init__(self):
+        self._logger = logging.getLogger(__name__)
+
+        self.camera_parameters_1 = None
+
+        self.camera_parameters_2 = None
+
+        self.feature_list_1: list = []
+        """List with :py:class:`.CalibrationFeature` objects for all images."""
+
+        self.feature_list_2: list = []
+
+        self.indices: list = []
+        """Indices of all images in :py:data:`feature_list` that were used for the current calibration."""
+
+        self.stereo_parameters = None
+
+    def calibrate(self,
+                  image_array_1: npt.NDArray,
+                  image_array_2: npt.NDArray,
+                  parameters_1: CameraParameters,
+                  parameters_2: CameraParameters,
+                  space_between_features: float,
+                  board_size: Optional[Tuple[int, int]] = None,
+                  marker: Optional[Tuple[int, int]] = None,
+                  **kwargs) -> StereoParameters:
+
+        sensor_dimensions_1 = np.array([image_array_1.shape[1], image_array_1.shape[0]])
+        sensor_dimensions_2 = np.array([image_array_2.shape[1], image_array_2.shape[0]])
+        if sensor_dimensions_1 == sensor_dimensions_2:
+            self.sensor_dimensions = sensor_dimensions_1
+        else:
+            raise TypeError("Sensor dimensions are not the same.")
+
+        self._logger.info("Detecting features")
+        self.feature_list_1 = self.construct_feature_list(image_array_1, space_between_features, board_size, marker,
+                                                          **kwargs)
+        self.feature_list_2 = self.construct_feature_list(image_array_2, space_between_features, board_size, marker,
+                                                          **kwargs)
+
+        image_points_list_1, image_points_list_2, object_points_list = self.construct_points_lists([])
+        if not object_points_list:
+            raise CalibrationError("Failed to detect common features in all images, unable to perform calibration.")
+
+        self._logger.info("Performing calibration")
+        self.stereo_parameters = self.opencv_calibration(parameters_1, parameters_2, image_points_list_1,
+                                                         image_points_list_2, object_points_list)
+
+        return self.stereo_parameters
+
+    def construct_feature_list(self, image_array: npt.NDArray, space_between_features, board_size, marker,
+                               **kwargs) -> list:
+        """Construct a list with the calibration features for all images in the image_array.
+
+        This method is used by :py:meth:`calibrate_camera`. Unless you want to perform the calibration steps
+        separately, you should not use this method.
+        """
+        feature_list = []
+        feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        n_images = image_array.shape[-1]
+        for idx in range(n_images):
+            feature = feature_detector.detect_feature(image_array[..., idx])
+            feature_list.append(feature)
+            if not feature.score > 0:
+                self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
+
+        return feature_list
+
+    def construct_points_lists(self, indices: list) -> Tuple[list, list, list]:
+        """Construct lists of image points and object points for calibration.
+
+        If indices is empty all images where a feature was detected will be used, otherwise only images that
+        correspond to the elements in indices will be used. This method is used by :py:meth:`calibrate_camera` and
+        :py:meth:`calibrate_indices`. Unless you want to perform the calibration steps separately, you should not use
+        this method.
+        """
+        self.indices = []
+        object_points_list = []
+        image_points_list_1 = []
+        image_points_list_2 = []
+        if not indices:
+            indices = range(len(self.feature_list_1))
+        for idx in indices:
+            try:  # Safeguard for when indices that don't exist are passed into the function.
+                feature_1 = self.feature_list_1[idx]
+                feature_2 = self.feature_list_2[idx]
+            except IndexError:
+                pass
+            else:
+                if feature_1.score >= 2 and feature_2.score >= 2:
+                    common_indices = np.where((feature_1.object_points == feature_2.object_points[:, None]).all(-1))
+                    if common_indices[0].size != 0:
+                        image_points_list_1 = feature_1.image_points[common_indices[1]]
+                        image_points_list_2 = feature_2.image_points[common_indices[0]]
+                        object_points_list.append(feature_1.object_points[common_indices[1]])
+                        self.indices.append(idx)
+
+        return image_points_list_1, image_points_list_2, object_points_list
+
+    def calibrate_indices(self):
+        pass
+
+    def opencv_calibration(self, parameters_1: CameraParameters, parameters_2: CameraParameters,
+                           image_points_list_1: list, image_points_list_2: list,
+                           object_points_list) -> StereoParameters:
+
+        retval, _, _, _, _, R, T, E, F, r_vecs, t_vecs, per_view_errors = \
+            cv2.stereoCalibrateExtended(object_points_list,
+                                        image_points_list_1,
+                                        image_points_list_2,
+                                        parameters_1.get_intrinsics_matrix_opencv(),
+                                        parameters_1.get_distortion_coeffs_opencv(),
+                                        parameters_2.get_intrinsics_matrix_opencv(),
+                                        parameters_2.get_distortion_coeffs_opencv(),
+                                        self.sensor_dimensions,
+                                        flags=cv2.CALIB_FIX_INTRINSIC)
+
+        calibration_parameters = StereoParameters()
+        calibration_parameters.set_parameters_opencv(retval, R, T, E, F, r_vecs, t_vecs, per_view_errors)
+        return calibration_parameters
+
+
+class StereoParameters:
+    def __init__(self):
+        self.retval = None
+        self.R = None
+        self.T = None
+        self.E = None
+        self.F = None
+        self.r_vecs = None
+        self.t_vecs = None
+        self.per_view_errors = None
+
+    def set_parameters_opencv(self, revtal, R, T, E, F, r_vecs, t_vecs, per_view_errors):
+
+        self.retval = revtal
+        self.R = R
+        self.T = T
+        self.E = R
+        self.F = F
+        self.r_vecs = r_vecs
+        self.t_vecs = t_vecs
+        self.per_view_errors = per_view_errors
 
 
 def remap_image(image: npt.NDArray, map_x: npt.NDArray, map_y: npt.NDArray,
