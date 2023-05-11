@@ -8,8 +8,7 @@ from os import listdir
 from os.path import join
 import cv2
 import numpy as np
-from camera_calibration_toolbox.core.camera_calibration import (CameraCalibrator, CameraParameters, remap_image,
-                                                                plot_reproj_error, plot_distortion, calculate_fov)
+from camera_calibration_toolbox.core.camera_calibration import CameraCalibrator, CameraParameters
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.package_logger import configure_logger
 #%% Configure logger (optional)
@@ -36,41 +35,42 @@ for image_idx in range(n_images):
         plt.imshow(cv2.cvtColor(image_array[..., image_idx], cv2.COLOR_BGR2RGB))
     else:
         plt.imshow(image_array[..., image_idx])
-    plt.plot(calibrator.feature_list[image_idx].image_points[:, 0],
-             calibrator.feature_list[image_idx].image_points[:, 1],
-             'o', color='lime')
-    for i in range(0, calibrator.feature_list[image_idx].image_points.shape[0]):
-        plt.text(calibrator.feature_list[image_idx].image_points[i, 0] + 5,
-                 calibrator.feature_list[image_idx].image_points[i, 1] - 5,
-                 i + 1, color="lime")
-    plt.title('Image nr ' + str(image_idx+1))
+    if image_idx in calibrator.indices:
+        feature_index = calibrator.indices.index(image_idx)
+        plt.plot(calibrator.image_points_list[feature_index][:, 0],
+                 calibrator.image_points_list[feature_index][:, 1],
+                 'o', color='lime')
+        for i in range(0, calibrator.object_points_list[feature_index].shape[0]):
+            plt.text(calibrator.image_points_list[feature_index][i, 0] + 5,
+                     calibrator.image_points_list[feature_index][i, 1] - 5,
+                     i + 1, color="lime")
+        color = 'g'
+    else:
+        color = 'r'
+    plt.title('Image nr ' + str(image_idx+1), color=color)
     plt.show()
 
 #%% Plot reprojection errors
-per_view_err = calibrator.per_view_err
-image_indices = calibrator.indices
-rms_reproj_error = calibrator.rms_reproj_error
-plot_reproj_error(per_view_err, image_indices, rms_reproj_error)
+calibrator.plot_reproj_error()
 
 #%% Visualize distortion
-sensor_size = calibration_parameters.sensor_dimensions
-intrinsics_matrix = calibration_parameters.get_intrinsics_matrix_opencv()
-distortion_coeffs = calibration_parameters.get_distortion_coeffs_opencv()
-plot_distortion(sensor_size, intrinsics_matrix, distortion_coeffs)
+calibration_parameters.plot_distortion()
 
 #%% Remove distortion from image
-image = image_array[:, :, :, 0]
-map_x, map_y, roi = calibration_parameters.get_remap_parameters()
-undistorted = remap_image(image, map_x, map_y, roi)
+calibration_parameters.calculate_remap_parameters()
+undistorted = calibration_parameters.remap_image(image)
 
-#%% Calculate FOV
-working_distance = 2000.00
-afov = calibration_parameters.get_afov()
-h_fov, v_fov = calculate_fov(afov, working_distance)
+plt.imshow(image)
+plt.title("Original")
+plt.show()
+
+plt.imshow(undistorted)
+plt.title("Undistorted")
+plt.show()
 
 #%% Save parameters
 calibration_parameters.save_parameters('examples/new_parameters.h5')
 
 #%% Load parameters
-calibration_parameters = CalibrationParameters()
+calibration_parameters = CameraParameters()
 calibration_parameters.load_parameters('examples/example_parameters.h5')
