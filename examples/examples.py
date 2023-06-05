@@ -69,7 +69,7 @@ plt.title("Undistorted")
 plt.show()
 
 #%% Save parameters
-calibration_parameters.save_parameters('examples/new_parameters.h5')
+calibration_parameters.save_parameters('examples/example_parameters.h5')
 
 #%% Load parameters
 calibration_parameters = CameraParameters()
