@@ -8,7 +8,7 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 from camera_calibration_toolbox.core.exceptions import CalibrationError
-from camera_calibration_toolbox.core.feature_detection import FeatureDetector, CalibrationFeature
+from camera_calibration_toolbox.core.feature_detection import FeatureDetector
 import logging
 
 
@@ -288,7 +288,8 @@ class CameraParameters:
         """Get the parameters necessary for pixel remapping (removing distortion).
 
         :param alpha: Free scaling parameter between 0 (when all the pixels in the undistorted image are valid) and 1
-            (when all the source image pixels are retained in the undistorted image).
+            (when all the source image pixels are retained in the undistorted image). If you set this at -1 OpenCV
+            automatically pick a value.
         :param fixed_point_maps: Whether to transform the floating points map to a fixed-point representation. This
             speeds up pixel remapping, which might be useful for live video feeds.
         :returns: the x- and y-maps, and the coordinates that describe the new ROI.
@@ -296,12 +297,14 @@ class CameraParameters:
         intrinsics_matrix = self.get_intrinsics_matrix_opencv()
         distortion_coeffs = self.get_distortion_coeffs_opencv()
         dimensions = self.sensor_dimensions
+        if fixed_point_maps:
+            map_type = cv2.CV_16SC2
+        else:
+            map_type = cv2.CV_32FC1
         new_intrinsics_matrix, self.roi = cv2.getOptimalNewCameraMatrix(intrinsics_matrix, distortion_coeffs,
                                                                         dimensions, alpha)
         self.map_x, self.map_y = cv2.initUndistortRectifyMap(intrinsics_matrix, distortion_coeffs, None,
-                                                             new_intrinsics_matrix, dimensions, 5)
-        if fixed_point_maps:
-            self.map_x, self.map_y = cv2.convertMaps(self.map_x, self.map_y, dstmap1type=cv2.CV_16SC2)
+                                                             new_intrinsics_matrix, dimensions, map_type)
 
     def remap_image(self, image: npt.NDArray) -> npt.NDArray:
         """Remaps the image to remove distortion
@@ -448,7 +451,6 @@ class CameraParameters:
 class StereoCalibrator:
     def __init__(self):
         self._logger = logging.getLogger(__name__)
-        self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001)
         self.feature_list_1: list = []
         self.feature_list_2: list = []
         self.indices: list = []
@@ -576,7 +578,6 @@ class StereoCalibrator:
                                           parameters_1.sensor_dimensions,  # Doesn't matter
                                           None,
                                           None,
-                                          criteria=self.criteria,
                                           flags=cv2.CALIB_FIX_INTRINSIC)
 
         calibration_parameters = StereoParameters()
@@ -628,8 +629,10 @@ class StereoParameters:
     :var Q: Disparity-to-depth mapping matrix.
     :var roi_1: ROI where all pixels for camera 1 are valid.
     :var roi_2: ROI where all pixels for camera 2 are valid.
-    :var map_1: Map for distortion correction and rectification for camera 1.
-    :var map_2: Map for distortion correction and rectification for camera 1.
+    :var map_1_x: x map for distortion correction and rectification for camera 1.
+    :var map_1_y: y map for distortion correction and rectification for camera 1.
+    :var map_2_x: x map for distortion correction and rectification for camera 1.
+    :var map_2_y: y map for distortion correction and rectification for camera 1.
     """
     def __init__(self) -> None:
         """Class constructor."""
@@ -647,8 +650,10 @@ class StereoParameters:
         self.Q = None
         self.roi_1 = None
         self.roi_2 = None
-        self.map_1 = None
-        self.map_2 = None
+        self.map_1_x = None
+        self.map_1_y = None
+        self.map_2_x = None
+        self.map_2_y = None
 
     def set_parameters_opencv(self, rms_reproj_error: float, R, T, E, F) -> None:
         """Set stereo parameters obtained from OpenCV calibration."""
@@ -709,7 +714,7 @@ class StereoParameters:
         """Calculate rectification transforms and maps necessary for remapping."""
         sensor_dim_1 = self.camera_parameters_1.sensor_dimensions
         sensor_dim_2 = self.camera_parameters_2.sensor_dimensions
-        if sensor_dim_1 != sensor_dim_2:
+        if not np.array_equal(sensor_dim_1, sensor_dim_2):
             raise NotImplementedError("Rectification for different sensor sizes has not been implemented.")
         intrinsics_1 = self.camera_parameters_1.get_intrinsics_matrix_opencv()
         distortion_1 = self.camera_parameters_1.get_distortion_coeffs_opencv()
@@ -730,23 +735,26 @@ class StereoParameters:
         if fixed_point_maps:
             map_type = cv2.CV_16SC2
         else:
-            map_type = cv2.CV_32FC2
-        self.map_1, _ = cv2.initUndistortRectifyMap(intrinsics_1,
-                                                    distortion_1,
-                                                    self.R_1,
-                                                    self.P_1,
-                                                    sensor_dim_1,
-                                                    map_type)
-        self.map_2, _ = cv2.initUndistortRectifyMap(intrinsics_2,
-                                                    distortion_2,
-                                                    self.R_2,
-                                                    self.P_2,
-                                                    sensor_dim_2,
-                                                    map_type)
+            map_type = cv2.CV_32FC1
+        self.map_1_x, self.map_1_y = cv2.initUndistortRectifyMap(intrinsics_1,
+                                                                 distortion_1,
+                                                                 self.R_1,
+                                                                 self.P_1,
+                                                                 sensor_dim_1,
+                                                                 map_type)
+        self.map_2_x, self.map_2_y = cv2.initUndistortRectifyMap(intrinsics_2,
+                                                                 distortion_2,
+                                                                 self.R_2,
+                                                                 self.P_2,
+                                                                 sensor_dim_2,
+                                                                 map_type)
 
     def remap_images(self, frame_1, frame_2) -> Tuple[npt.NDArray, npt.NDArray]:
         """Remap the images so they are undistorted and rectified."""
-        rectified_1 = cv2.remap(frame_1, self.map_1, None, cv2.INTER_LINEAR)
-        rectified_2 = cv2.remap(frame_2, self.map_2, None, cv2.INTER_LINEAR)
+        try:
+            rectified_1 = cv2.remap(frame_1, self.map_1_x, self.map_1_y, cv2.INTER_LINEAR)
+            rectified_2 = cv2.remap(frame_2, self.map_2_x, self.map_2_y, cv2.INTER_LINEAR)
+        except cv2.error as e:
+            raise Exception("You probably did not calculate the undistort and rectification map before remapping.") from e
 
         return rectified_1, rectified_2
