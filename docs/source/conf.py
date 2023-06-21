@@ -10,10 +10,10 @@ sys.path.insert(0, os.path.abspath('../../src'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Camera calibration toolbox'
-copyright = '2022, Michael Hillen <michael.hillen@uantwerpen.be>, Seppe Sels <seppe.sels@uantwerpen.be>'
-author = 'Michael Hillen <michael.hillen@uantwerpen.be>, Seppe Sels <seppe.sels@uantwerpen.be>'
-release = '1.0'
+project = 'PyCamCalib'
+copyright = '2022, InViLab'
+author = 'Michael Hillen <michael.hillen@uantwerpen.be>'
+release = '2.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -22,10 +22,11 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.viewcode',
               'sphinx.ext.autosummary',
               'sphinx.ext.intersphinx',
-              'sphinx_autodoc_typehints']
+              'sphinx_autodoc_typehints',
+              'myst_parser']
 
 autosummary_generate = True
-autosummary_mock_imports = ['camera_calibration_toolbox.gui']
+autosummary_mock_imports = ['PyCamCalib.camera_calibration_gui']
 
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None),
                        'numpy': ('https://numpy.org/doc/1.21/', None)}
