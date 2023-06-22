@@ -4,8 +4,7 @@ Some scripts need to be executed in order.
 """
 
 #%% Imports
-from PyCamCalib.core.calibration import CameraCalibrator, CameraParameters
-from PyCamCalib import camera_images
+from PyCamCalib.core.calibration import CameraCalibrator
 import glob
 import cv2
 import numpy as np
@@ -13,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 #%% Load images into array
-files = glob.glob(str(camera_images) + '/*.tiff')
+files = glob.glob('examples/camera_images/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])

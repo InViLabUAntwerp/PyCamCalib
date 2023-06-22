@@ -4,8 +4,7 @@ Some scripts need to be executed in order.
 """
 
 #%% Imports
-from PyCamCalib.core.calibration import CameraCalibrator, StereoCalibrator, StereoParameters
-from PyCamCalib import stereo_left, stereo_right
+from PyCamCalib.core.calibration import CameraCalibrator, StereoCalibrator
 import glob
 import cv2
 import numpy as np
@@ -13,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch, Rectangle
 
 #%% Load image sets for both cameras
-files = glob.glob(str(stereo_left) + '/*.tiff')
+files = glob.glob('examples/stereo_images/left/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -21,7 +20,7 @@ for image_idx in range(n_images):
         image_array_1 = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
     image_array_1[..., image_idx] = image
 
-files = files = glob.glob(str(stereo_right) + '/*.tiff')
+files = files = glob.glob('examples/stereo_images/right/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
