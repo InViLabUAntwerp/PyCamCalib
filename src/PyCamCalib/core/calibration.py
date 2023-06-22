@@ -17,10 +17,10 @@ class CameraCalibrator:
 
     :var sensor_dimensions: Sensor dimensions in pixels (w, h).
     :var feature_list: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all images.
-    :var indices: Indices of all images in :py:attribute:`feature_list` that were used for the current calibration.
+    :var indices: Indices of all images in :py:attr:`feature_list` that were used for the current calibration.
     :var image_points_list: Contains all image space points used for the current calibration.
     :var object_points_list: Contains all object space points used for the current calibration.
-    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attribute:`indices`.
+    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attr:`indices`.
     :var rms_reproj_error: The rms re-projection error for the current calibration.
     :var r_vecs: Rotation vectors for each image.
     :var t_vecs: Translation vectors for each image.
@@ -53,7 +53,7 @@ class CameraCalibrator:
         a good calibration.
 
         :param image_array: Array containing all images that will be used for calibration. It can either be a 3D array
-            (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
+           (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
         :param space_between_features: Checker size in mm. You can set this to 1 if you don't care about scaling.
         :param board_size: Size of the board in (rows, columns)
         :param marker: Position of the marker if there is a marker present. Not implemented yet.
@@ -61,11 +61,9 @@ class CameraCalibrator:
            known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
            Either `board_size` or `marker` needs to be known in order to use this option.
         :param kwargs: kwargs passed along to the :py:class:`PyCamCalib.core.feature_detection.FeatureDetector`.
-           Available keywords are:
-           `expand`: set this to True, if you want to try to expand the checkerboard past obstructions
-           `predict`: set this to True if you want to predict missing checkerboard corners
-           `out_of_image`: set this to True if you want the predictions to include points that lie beyond the image
-           borders.
+           Available keywords are:v`expand`: set this to True, if you want to try to expand the checkerboard past
+           obstructionsv`predict`: set this to True if you want to predict missing checkerboard corners `out_of_image`:
+           set this to True if you want the predictions to include points that lie beyond the imagevborders.
         :returns: An object that contains all calibration parameter data.
         :raises TypeError: When image_array is not a numpy array or when `absolute` is set to True but `board_size` and
            `marker` are not given.
@@ -171,8 +169,8 @@ class CameraCalibrator:
         :param indices: A list that contains the indices that correspond to the elements in :py:data:`feature_list`
            which should be used for a new calibration. Passing an empty list will perform a calibration with all good
            images.
-       :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
-          known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
+        :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
+           known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
         :returns: An object that contains all calibration parameter data.
         :raises TypeError: When indices is not a list.
         :raises CalibrationError: When no images with detected features were selected.
@@ -213,7 +211,7 @@ class CameraParameters:
     :var s: Skew.
     :var s_std: Standard deviation of skew.
     :var radial_dist_coeffs: Radial distortion coefficients.
-    :var radial_dist_coeffs:Standard deviations of radial distortion coefficients.
+    :var radial_dist_coeffs: Standard deviations of radial distortion coefficients.
     :var tangential_dist_coeffs: Tangential distortion coefficients.
     :var tangential_dist_coeffs_std: Standard deviations of tangential distortion coefficients.
     :var rms_reproj_error: Overall rms re-projection error.
@@ -305,7 +303,7 @@ class CameraParameters:
     def remap_image(self, image: npt.NDArray) -> npt.NDArray:
         """Remaps the image to remove distortion
 
-        Undistort an image with the maps that were calculated using :py:method:`calculate_undistort_map`.
+        Undistort an image with the maps that were calculated using :py:meth:`calculate_undistort_map`.
 
         :param image: The image that needs to be remapped, this is either a 2D or 3D array.
         :returns: The undistorted image.
@@ -446,17 +444,16 @@ class CameraParameters:
 class StereoCalibrator:
     """Object used to perform stereo calibration.
 
-    :var sensor_dimensions: Sensor dimensions in pixels (w, h).
     :var feature_list_1: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all
        images from camera 1.
     :var feature_list_2: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all
        images from camera 2.
-    :var indices: Indices of all images in :py:attribute:`feature_list_1` and :py:attribute:`feature_list_2` that were
+    :var indices: Indices of all images in :py:attr:`feature_list_1` and :py:attr:`feature_list_2` that were
        used for the current calibration.
     :var image_points_list_1: Contains all image space points used for the current calibration for camera 1.
     :var image_points_list_2: Contains all image space points used for the current calibration for camera 2.
     :var object_points_list: Contains all object space points used for the current calibration.
-    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attribute:`indices`.
+    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attr:`indices`.
     :var rms_reproj_error: The rms re-projection error for the current calibration.
     :var r_vecs: Rotation vectors for each image.
     :var t_vecs: Translation vectors for each image.
@@ -608,7 +605,7 @@ class StereoCalibrator:
     def opencv_calibration(self, parameters_1: CameraParameters, parameters_2: CameraParameters) -> StereoParameters:
         """Regular OpenCV stereo calibration.
 
-         Unless you want to perform the calibration steps separately, you should not use this method.
+        Unless you want to perform the calibration steps separately, you should not use this method.
         """
         self.rms_reproj_error, _, _, _, _, R, T, E, F, self.r_vecs, self.t_vecs, self.per_view_err \
             = cv2.stereoCalibrateExtended(self.object_points_list,
@@ -758,10 +755,10 @@ class StereoParameters:
         """Calculate rectification transforms and maps necessary for remapping.
 
         :param alpha: Free scaling parameter between 0 (when all the pixels in the undistorted image are valid) and 1
-            (when all the source image pixels are retained in the undistorted image). If you set this at -1 OpenCV
-            automatically pick a value.
+           (when all the source image pixels are retained in the undistorted image). If you set this at -1 OpenCV
+           automatically pick a value.
         :param fixed_point_maps: Whether to transform the floating points map to a fixed-point representation. This
-            speeds up pixel remapping, which might be useful for live video feeds.
+           speeds up pixel remapping, which might be useful for live video feeds.
         """
         sensor_dim_1 = self.camera_parameters_1.sensor_dimensions
         sensor_dim_2 = self.camera_parameters_2.sensor_dimensions

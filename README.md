@@ -144,6 +144,7 @@ parameters.load_parameters(your_file)
 For your convenience, there is also a GUI for the camera calibration process. This can be launched by either running
 the `camera_calibration_gui.exe` file or by executing `camera_calibration_gui` in the terminal
 
-xamples for all these use cases can be found in the library root folder under `PyCamCalib/examples/`.  Please refer to 
+examples for all these use cases can be found in the
+[online repository](https://bitbucket.org/MichaelHillen/calibration_toolbox_python/src/distribution/).  Please refer to 
 the documentation for additional in-depth information.
 
