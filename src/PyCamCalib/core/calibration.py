@@ -256,8 +256,8 @@ class CameraParameters:
         :returns: The field of view as (horizontal, vertical).
         """
         afov = self.get_afov()
-        h_fov = 2 * working_distance * np.tan(afov[0] / 2)
-        v_fov = 2 * working_distance * np.tan(afov[1] / 2)
+        h_fov = 2 * working_distance * np.tan(np.deg2rad(afov[0] / 2))
+        v_fov = 2 * working_distance * np.tan(np.deg2rad(afov[1] / 2))
 
         return h_fov, v_fov
 

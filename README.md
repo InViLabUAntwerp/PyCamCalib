@@ -93,6 +93,11 @@ parameters.load_parameters(your_file)
 
 ### Stereo calibration
 
+Stereo calibration can be performed for camera's with different sensor/image sizes, but you won't be able to rectify the
+images. Should you wish to do so, crop (if the FOV is much bigger than that of the other camera) and rescale the image
+of the camera with the higher resolution, so it matches the image size of the other camera exactly **BEFORE performing 
+ALL calibration steps**.
+
 In order to perform a stereo calibration, you need to calibrate both cameras separately first, as described above. The 
 `CameraParameters` are used as inputs for the stereo calibration. In addition, you need two image stacks (one for each
 camera), which contain a few matching images of the calibration pattern. The stereo calibration is performed with the 
@@ -142,7 +147,7 @@ parameters.load_parameters(your_file)
 ### GUI
 
 For your convenience, there is also a GUI for the camera calibration process. This can be launched by either running
-the `camera_calibration_gui.exe` file or by executing `camera_calibration_gui` in the terminal
+the `camera_calibration_gui.exe` file or by executing `camera_calibration_gui` in the terminal.
 
 examples for all these use cases can be found in the
 [online repository](https://bitbucket.org/MichaelHillen/calibration_toolbox_python/src/distribution/).  Please refer to 
