@@ -3,11 +3,9 @@
 
 class ImageError(Exception):
     """Raised when there is an issue with the image."""
-
     pass
 
 
 class CalibrationError(Exception):
     """Raised when there is an issue with calibration."""
-
     pass

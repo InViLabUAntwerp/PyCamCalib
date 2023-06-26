@@ -16,26 +16,190 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QDoubleSpinBox,
-    QGridLayout, QGroupBox, QHeaderView, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-    QMenuBar, QPushButton, QSizePolicy, QSlider,
-    QSpinBox, QStatusBar, QTabWidget, QTableWidget,
-    QTableWidgetItem, QWidget)
+    QGridLayout, QGroupBox, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMainWindow, QMenuBar, QPushButton, QSizePolicy,
+    QSlider, QSpinBox, QStatusBar, QTabWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from PyCamCalib.gui.custom_widgets import (DistortionPlotWidget, ReprojErrPlotWidget)
+from PyCamCalib.camera_calibration_gui.custom_widgets import (DistortionPlotWidget, ReprojErrPlotWidget)
 from pyqtgraph import ImageView
 
 class Ui_CalibrationApp(object):
     def setupUi(self, CalibrationApp):
         if not CalibrationApp.objectName():
             CalibrationApp.setObjectName(u"CalibrationApp")
-        CalibrationApp.resize(996, 793)
+        CalibrationApp.resize(710, 793)
         self.centralwidget = QWidget(CalibrationApp)
         self.centralwidget.setObjectName(u"centralwidget")
         self.tabWidget = QTabWidget(self.centralwidget)
         self.tabWidget.setObjectName(u"tabWidget")
         self.tabWidget.setEnabled(True)
         self.tabWidget.setGeometry(QRect(10, 10, 691, 731))
+        self.tab = QWidget()
+        self.tab.setObjectName(u"tab")
+        self.calibrateButton = QPushButton(self.tab)
+        self.calibrateButton.setObjectName(u"calibrateButton")
+        self.calibrateButton.setGeometry(QRect(10, 430, 131, 51))
+        font = QFont()
+        font.setPointSize(14)
+        self.calibrateButton.setFont(font)
+        self.exportButton = QPushButton(self.tab)
+        self.exportButton.setObjectName(u"exportButton")
+        self.exportButton.setEnabled(False)
+        self.exportButton.setGeometry(QRect(10, 490, 131, 51))
+        self.exportButton.setFont(font)
+        self.statusText = QLabel(self.tab)
+        self.statusText.setObjectName(u"statusText")
+        self.statusText.setGeometry(QRect(150, 430, 521, 51))
+        font1 = QFont()
+        font1.setPointSize(16)
+        self.statusText.setFont(font1)
+        self.groupBox_2 = QGroupBox(self.tab)
+        self.groupBox_2.setObjectName(u"groupBox_2")
+        self.groupBox_2.setGeometry(QRect(10, 20, 311, 371))
+        font2 = QFont()
+        font2.setPointSize(10)
+        self.groupBox_2.setFont(font2)
+        self.namesListWidget = QListWidget(self.groupBox_2)
+        self.namesListWidget.setObjectName(u"namesListWidget")
+        self.namesListWidget.setGeometry(QRect(10, 20, 291, 231))
+        self.horizontalLayoutWidget = QWidget(self.groupBox_2)
+        self.horizontalLayoutWidget.setObjectName(u"horizontalLayoutWidget")
+        self.horizontalLayoutWidget.setGeometry(QRect(10, 310, 291, 41))
+        self.horizontalLayout_2 = QHBoxLayout(self.horizontalLayoutWidget)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
+        self.horizontalLayout_2.setContentsMargins(0, 0, 0, 0)
+        self.label_2 = QLabel(self.horizontalLayoutWidget)
+        self.label_2.setObjectName(u"label_2")
+
+        self.horizontalLayout_2.addWidget(self.label_2)
+
+        self.headerField = QLineEdit(self.horizontalLayoutWidget)
+        self.headerField.setObjectName(u"headerField")
+        self.headerField.setEnabled(False)
+
+        self.horizontalLayout_2.addWidget(self.headerField)
+
+        self.browseButton = QPushButton(self.groupBox_2)
+        self.browseButton.setObjectName(u"browseButton")
+        self.browseButton.setGeometry(QRect(200, 260, 101, 31))
+        self.browseButton.setFont(font2)
+        self.groupBox = QGroupBox(self.tab)
+        self.groupBox.setObjectName(u"groupBox")
+        self.groupBox.setGeometry(QRect(370, 20, 261, 261))
+        self.groupBox.setFont(font2)
+        self.gridLayoutWidget = QWidget(self.groupBox)
+        self.gridLayoutWidget.setObjectName(u"gridLayoutWidget")
+        self.gridLayoutWidget.setGeometry(QRect(10, 20, 244, 229))
+        self.gridLayout = QGridLayout(self.gridLayoutWidget)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.gridLayout.setContentsMargins(0, 0, 0, 0)
+        self.nRowsSpinBox = QSpinBox(self.gridLayoutWidget)
+        self.nRowsSpinBox.setObjectName(u"nRowsSpinBox")
+        self.nRowsSpinBox.setEnabled(False)
+        self.nRowsSpinBox.setMinimum(1)
+        self.nRowsSpinBox.setMaximum(1000)
+
+        self.gridLayout.addWidget(self.nRowsSpinBox, 2, 1, 1, 1)
+
+        self.label_8 = QLabel(self.gridLayoutWidget)
+        self.label_8.setObjectName(u"label_8")
+
+        self.gridLayout.addWidget(self.label_8, 5, 0, 1, 1)
+
+        self.label_6 = QLabel(self.gridLayoutWidget)
+        self.label_6.setObjectName(u"label_6")
+
+        self.gridLayout.addWidget(self.label_6, 0, 0, 1, 1)
+
+        self.boardSizeCheckBox = QCheckBox(self.gridLayoutWidget)
+        self.boardSizeCheckBox.setObjectName(u"boardSizeCheckBox")
+
+        self.gridLayout.addWidget(self.boardSizeCheckBox, 1, 0, 1, 1)
+
+        self.label_9 = QLabel(self.gridLayoutWidget)
+        self.label_9.setObjectName(u"label_9")
+
+        self.gridLayout.addWidget(self.label_9, 6, 0, 1, 1)
+
+        self.label_7 = QLabel(self.gridLayoutWidget)
+        self.label_7.setObjectName(u"label_7")
+
+        self.gridLayout.addWidget(self.label_7, 3, 0, 1, 1)
+
+        self.mColSpinBox = QSpinBox(self.gridLayoutWidget)
+        self.mColSpinBox.setObjectName(u"mColSpinBox")
+        self.mColSpinBox.setEnabled(False)
+        self.mColSpinBox.setMinimum(1)
+        self.mColSpinBox.setMaximum(1000)
+
+        self.gridLayout.addWidget(self.mColSpinBox, 6, 1, 1, 1)
+
+        self.label_4 = QLabel(self.gridLayoutWidget)
+        self.label_4.setObjectName(u"label_4")
+
+        self.gridLayout.addWidget(self.label_4, 2, 0, 1, 1)
+
+        self.markerCheckBox = QCheckBox(self.gridLayoutWidget)
+        self.markerCheckBox.setObjectName(u"markerCheckBox")
+
+        self.gridLayout.addWidget(self.markerCheckBox, 4, 0, 1, 1)
+
+        self.checkerSizeSpinBox = QDoubleSpinBox(self.gridLayoutWidget)
+        self.checkerSizeSpinBox.setObjectName(u"checkerSizeSpinBox")
+        self.checkerSizeSpinBox.setMinimum(0.010000000000000)
+        self.checkerSizeSpinBox.setMaximum(1000.000000000000000)
+        self.checkerSizeSpinBox.setValue(1.000000000000000)
+
+        self.gridLayout.addWidget(self.checkerSizeSpinBox, 0, 1, 1, 1)
+
+        self.nColsSpinBox = QSpinBox(self.gridLayoutWidget)
+        self.nColsSpinBox.setObjectName(u"nColsSpinBox")
+        self.nColsSpinBox.setEnabled(False)
+        self.nColsSpinBox.setMinimum(1)
+        self.nColsSpinBox.setMaximum(1000)
+
+        self.gridLayout.addWidget(self.nColsSpinBox, 3, 1, 1, 1)
+
+        self.mRowSpinBox = QSpinBox(self.gridLayoutWidget)
+        self.mRowSpinBox.setObjectName(u"mRowSpinBox")
+        self.mRowSpinBox.setEnabled(False)
+        self.mRowSpinBox.setMinimum(1)
+        self.mRowSpinBox.setMaximum(1000)
+
+        self.gridLayout.addWidget(self.mRowSpinBox, 5, 1, 1, 1)
+
+        self.logoLabel = QLabel(self.tab)
+        self.logoLabel.setObjectName(u"logoLabel")
+        self.logoLabel.setGeometry(QRect(420, 560, 261, 131))
+        self.logoLabel.setScaledContents(True)
+        self.groupBox_3 = QGroupBox(self.tab)
+        self.groupBox_3.setObjectName(u"groupBox_3")
+        self.groupBox_3.setGeometry(QRect(370, 280, 261, 111))
+        self.groupBox_3.setFont(font2)
+        self.verticalLayoutWidget = QWidget(self.groupBox_3)
+        self.verticalLayoutWidget.setObjectName(u"verticalLayoutWidget")
+        self.verticalLayoutWidget.setGeometry(QRect(10, 20, 94, 91))
+        self.verticalLayout = QVBoxLayout(self.verticalLayoutWidget)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
+        self.expandCheckBox = QCheckBox(self.verticalLayoutWidget)
+        self.expandCheckBox.setObjectName(u"expandCheckBox")
+
+        self.verticalLayout.addWidget(self.expandCheckBox)
+
+        self.predictCheckBox = QCheckBox(self.verticalLayoutWidget)
+        self.predictCheckBox.setObjectName(u"predictCheckBox")
+
+        self.verticalLayout.addWidget(self.predictCheckBox)
+
+        self.absoluteCheckBox = QCheckBox(self.verticalLayoutWidget)
+        self.absoluteCheckBox.setObjectName(u"absoluteCheckBox")
+
+        self.verticalLayout.addWidget(self.absoluteCheckBox)
+
+        self.tabWidget.addTab(self.tab, "")
         self.imageTab = QWidget()
         self.imageTab.setObjectName(u"imageTab")
         self.imageTab.setEnabled(True)
@@ -61,14 +225,18 @@ class Ui_CalibrationApp(object):
         self.maxImageLabel.setGeometry(QRect(650, 540, 31, 20))
         self.reprojErrLabel = QLabel(self.imageTab)
         self.reprojErrLabel.setObjectName(u"reprojErrLabel")
-        self.reprojErrLabel.setGeometry(QRect(10, 560, 201, 31))
-        font = QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        self.reprojErrLabel.setFont(font)
+        self.reprojErrLabel.setGeometry(QRect(10, 600, 201, 31))
+        font3 = QFont()
+        font3.setPointSize(10)
+        font3.setBold(True)
+        self.reprojErrLabel.setFont(font3)
         self.graphicsView = ImageView(self.imageTab)
         self.graphicsView.setObjectName(u"graphicsView")
         self.graphicsView.setGeometry(QRect(10, 10, 661, 481))
+        self.imageNameLabel = QLabel(self.imageTab)
+        self.imageNameLabel.setObjectName(u"imageNameLabel")
+        self.imageNameLabel.setGeometry(QRect(10, 560, 661, 31))
+        self.imageNameLabel.setFont(font3)
         self.tabWidget.addTab(self.imageTab, "")
         self.reprojErrorsTab = QWidget()
         self.reprojErrorsTab.setObjectName(u"reprojErrorsTab")
@@ -80,19 +248,17 @@ class Ui_CalibrationApp(object):
         self.RMSreprojErrLabel.setObjectName(u"RMSreprojErrLabel")
         self.RMSreprojErrLabel.setEnabled(True)
         self.RMSreprojErrLabel.setGeometry(QRect(10, 510, 241, 21))
-        self.RMSreprojErrLabel.setFont(font)
+        self.RMSreprojErrLabel.setFont(font3)
         self.removeOutliersButton = QPushButton(self.reprojErrorsTab)
         self.removeOutliersButton.setObjectName(u"removeOutliersButton")
         self.removeOutliersButton.setEnabled(False)
         self.removeOutliersButton.setGeometry(QRect(520, 510, 151, 61))
-        font1 = QFont()
-        font1.setPointSize(10)
-        self.removeOutliersButton.setFont(font1)
+        self.removeOutliersButton.setFont(font2)
         self.resetButton = QPushButton(self.reprojErrorsTab)
         self.resetButton.setObjectName(u"resetButton")
         self.resetButton.setEnabled(False)
         self.resetButton.setGeometry(QRect(520, 570, 151, 61))
-        self.resetButton.setFont(font1)
+        self.resetButton.setFont(font2)
         self.tabWidget.addTab(self.reprojErrorsTab, "")
         self.calibrationParamsTab = QWidget()
         self.calibrationParamsTab.setObjectName(u"calibrationParamsTab")
@@ -103,30 +269,30 @@ class Ui_CalibrationApp(object):
         self.intrinsicsTable = QTableWidget(self.calibrationParamsTab)
         if (self.intrinsicsTable.columnCount() < 2):
             self.intrinsicsTable.setColumnCount(2)
-        font2 = QFont()
-        font2.setBold(True)
+        font4 = QFont()
+        font4.setBold(True)
         __qtablewidgetitem = QTableWidgetItem()
-        __qtablewidgetitem.setFont(font2);
+        __qtablewidgetitem.setFont(font4);
         self.intrinsicsTable.setHorizontalHeaderItem(0, __qtablewidgetitem)
         __qtablewidgetitem1 = QTableWidgetItem()
-        __qtablewidgetitem1.setFont(font2);
+        __qtablewidgetitem1.setFont(font4);
         self.intrinsicsTable.setHorizontalHeaderItem(1, __qtablewidgetitem1)
         if (self.intrinsicsTable.rowCount() < 5):
             self.intrinsicsTable.setRowCount(5)
         __qtablewidgetitem2 = QTableWidgetItem()
-        __qtablewidgetitem2.setFont(font2);
+        __qtablewidgetitem2.setFont(font4);
         self.intrinsicsTable.setVerticalHeaderItem(0, __qtablewidgetitem2)
         __qtablewidgetitem3 = QTableWidgetItem()
-        __qtablewidgetitem3.setFont(font2);
+        __qtablewidgetitem3.setFont(font4);
         self.intrinsicsTable.setVerticalHeaderItem(1, __qtablewidgetitem3)
         __qtablewidgetitem4 = QTableWidgetItem()
-        __qtablewidgetitem4.setFont(font2);
+        __qtablewidgetitem4.setFont(font4);
         self.intrinsicsTable.setVerticalHeaderItem(2, __qtablewidgetitem4)
         __qtablewidgetitem5 = QTableWidgetItem()
-        __qtablewidgetitem5.setFont(font2);
+        __qtablewidgetitem5.setFont(font4);
         self.intrinsicsTable.setVerticalHeaderItem(3, __qtablewidgetitem5)
         __qtablewidgetitem6 = QTableWidgetItem()
-        __qtablewidgetitem6.setFont(font2);
+        __qtablewidgetitem6.setFont(font4);
         self.intrinsicsTable.setVerticalHeaderItem(4, __qtablewidgetitem6)
         __qtablewidgetitem7 = QTableWidgetItem()
         __qtablewidgetitem7.setTextAlignment(Qt.AlignTrailing|Qt.AlignVCenter);
@@ -180,27 +346,27 @@ class Ui_CalibrationApp(object):
         if (self.distortionTable.columnCount() < 2):
             self.distortionTable.setColumnCount(2)
         __qtablewidgetitem17 = QTableWidgetItem()
-        __qtablewidgetitem17.setFont(font2);
+        __qtablewidgetitem17.setFont(font4);
         self.distortionTable.setHorizontalHeaderItem(0, __qtablewidgetitem17)
         __qtablewidgetitem18 = QTableWidgetItem()
-        __qtablewidgetitem18.setFont(font2);
+        __qtablewidgetitem18.setFont(font4);
         self.distortionTable.setHorizontalHeaderItem(1, __qtablewidgetitem18)
         if (self.distortionTable.rowCount() < 5):
             self.distortionTable.setRowCount(5)
         __qtablewidgetitem19 = QTableWidgetItem()
-        __qtablewidgetitem19.setFont(font2);
+        __qtablewidgetitem19.setFont(font4);
         self.distortionTable.setVerticalHeaderItem(0, __qtablewidgetitem19)
         __qtablewidgetitem20 = QTableWidgetItem()
-        __qtablewidgetitem20.setFont(font2);
+        __qtablewidgetitem20.setFont(font4);
         self.distortionTable.setVerticalHeaderItem(1, __qtablewidgetitem20)
         __qtablewidgetitem21 = QTableWidgetItem()
-        __qtablewidgetitem21.setFont(font2);
+        __qtablewidgetitem21.setFont(font4);
         self.distortionTable.setVerticalHeaderItem(2, __qtablewidgetitem21)
         __qtablewidgetitem22 = QTableWidgetItem()
-        __qtablewidgetitem22.setFont(font2);
+        __qtablewidgetitem22.setFont(font4);
         self.distortionTable.setVerticalHeaderItem(3, __qtablewidgetitem22)
         __qtablewidgetitem23 = QTableWidgetItem()
-        __qtablewidgetitem23.setFont(font2);
+        __qtablewidgetitem23.setFont(font4);
         self.distortionTable.setVerticalHeaderItem(4, __qtablewidgetitem23)
         __qtablewidgetitem24 = QTableWidgetItem()
         __qtablewidgetitem24.setTextAlignment(Qt.AlignTrailing|Qt.AlignVCenter);
@@ -253,171 +419,21 @@ class Ui_CalibrationApp(object):
         self.label_3 = QLabel(self.calibrationParamsTab)
         self.label_3.setObjectName(u"label_3")
         self.label_3.setGeometry(QRect(350, 510, 81, 41))
-        font3 = QFont()
-        font3.setPointSize(8)
-        font3.setBold(True)
-        self.label_3.setFont(font3)
+        font5 = QFont()
+        font5.setPointSize(8)
+        font5.setBold(True)
+        self.label_3.setFont(font5)
         self.label_3.setWordWrap(True)
         self.label_5 = QLabel(self.calibrationParamsTab)
         self.label_5.setObjectName(u"label_5")
         self.label_5.setGeometry(QRect(10, 510, 81, 41))
-        self.label_5.setFont(font3)
+        self.label_5.setFont(font5)
         self.label_5.setWordWrap(True)
         self.tabWidget.addTab(self.calibrationParamsTab, "")
-        self.groupBox = QGroupBox(self.centralwidget)
-        self.groupBox.setObjectName(u"groupBox")
-        self.groupBox.setGeometry(QRect(710, 10, 271, 731))
-        self.gridLayoutWidget = QWidget(self.groupBox)
-        self.gridLayoutWidget.setObjectName(u"gridLayoutWidget")
-        self.gridLayoutWidget.setGeometry(QRect(10, 30, 251, 540))
-        self.gridLayout = QGridLayout(self.gridLayoutWidget)
-        self.gridLayout.setObjectName(u"gridLayout")
-        self.gridLayout.setContentsMargins(0, 0, 0, 0)
-        self.calibrateButton = QPushButton(self.gridLayoutWidget)
-        self.calibrateButton.setObjectName(u"calibrateButton")
-
-        self.gridLayout.addWidget(self.calibrateButton, 14, 1, 1, 1)
-
-        self.label_9 = QLabel(self.gridLayoutWidget)
-        self.label_9.setObjectName(u"label_9")
-
-        self.gridLayout.addWidget(self.label_9, 9, 0, 1, 1)
-
-        self.label_4 = QLabel(self.gridLayoutWidget)
-        self.label_4.setObjectName(u"label_4")
-
-        self.gridLayout.addWidget(self.label_4, 5, 0, 1, 1)
-
-        self.statusText = QLabel(self.gridLayoutWidget)
-        self.statusText.setObjectName(u"statusText")
-
-        self.gridLayout.addWidget(self.statusText, 16, 1, 1, 1)
-
-        self.statusLabel = QLabel(self.gridLayoutWidget)
-        self.statusLabel.setObjectName(u"statusLabel")
-
-        self.gridLayout.addWidget(self.statusLabel, 16, 0, 1, 1)
-
-        self.browseButton = QPushButton(self.gridLayoutWidget)
-        self.browseButton.setObjectName(u"browseButton")
-
-        self.gridLayout.addWidget(self.browseButton, 1, 1, 1, 1)
-
-        self.checkBox = QCheckBox(self.gridLayoutWidget)
-        self.checkBox.setObjectName(u"checkBox")
-
-        self.gridLayout.addWidget(self.checkBox, 10, 1, 1, 1)
-
-        self.spinBox = QSpinBox(self.gridLayoutWidget)
-        self.spinBox.setObjectName(u"spinBox")
-        self.spinBox.setEnabled(False)
-        self.spinBox.setMinimum(1)
-        self.spinBox.setMaximum(1000)
-
-        self.gridLayout.addWidget(self.spinBox, 6, 1, 1, 1)
-
-        self.spinBox_4 = QSpinBox(self.gridLayoutWidget)
-        self.spinBox_4.setObjectName(u"spinBox_4")
-        self.spinBox_4.setEnabled(False)
-        self.spinBox_4.setMinimum(1)
-        self.spinBox_4.setMaximum(1000)
-
-        self.gridLayout.addWidget(self.spinBox_4, 9, 1, 1, 1)
-
-        self.label_6 = QLabel(self.gridLayoutWidget)
-        self.label_6.setObjectName(u"label_6")
-
-        self.gridLayout.addWidget(self.label_6, 3, 0, 1, 1)
-
-        self.namesListWidget = QListWidget(self.gridLayoutWidget)
-        self.namesListWidget.setObjectName(u"namesListWidget")
-
-        self.gridLayout.addWidget(self.namesListWidget, 0, 1, 1, 1)
-
-        self.doubleSpinBox = QDoubleSpinBox(self.gridLayoutWidget)
-        self.doubleSpinBox.setObjectName(u"doubleSpinBox")
-        self.doubleSpinBox.setMinimum(0.010000000000000)
-        self.doubleSpinBox.setMaximum(1000.000000000000000)
-        self.doubleSpinBox.setValue(1.000000000000000)
-
-        self.gridLayout.addWidget(self.doubleSpinBox, 3, 1, 1, 1)
-
-        self.exportButton = QPushButton(self.gridLayoutWidget)
-        self.exportButton.setObjectName(u"exportButton")
-        self.exportButton.setEnabled(False)
-
-        self.gridLayout.addWidget(self.exportButton, 15, 1, 1, 1)
-
-        self.label_7 = QLabel(self.gridLayoutWidget)
-        self.label_7.setObjectName(u"label_7")
-
-        self.gridLayout.addWidget(self.label_7, 6, 0, 1, 1)
-
-        self.checkBox_2 = QCheckBox(self.gridLayoutWidget)
-        self.checkBox_2.setObjectName(u"checkBox_2")
-
-        self.gridLayout.addWidget(self.checkBox_2, 7, 0, 1, 1)
-
-        self.label = QLabel(self.gridLayoutWidget)
-        self.label.setObjectName(u"label")
-
-        self.gridLayout.addWidget(self.label, 0, 0, 1, 1)
-
-        self.spinBox_2 = QSpinBox(self.gridLayoutWidget)
-        self.spinBox_2.setObjectName(u"spinBox_2")
-        self.spinBox_2.setEnabled(False)
-        self.spinBox_2.setMinimum(1)
-        self.spinBox_2.setMaximum(1000)
-
-        self.gridLayout.addWidget(self.spinBox_2, 5, 1, 1, 1)
-
-        self.checkBox_3 = QCheckBox(self.gridLayoutWidget)
-        self.checkBox_3.setObjectName(u"checkBox_3")
-
-        self.gridLayout.addWidget(self.checkBox_3, 4, 0, 1, 1)
-
-        self.label_8 = QLabel(self.gridLayoutWidget)
-        self.label_8.setObjectName(u"label_8")
-
-        self.gridLayout.addWidget(self.label_8, 8, 0, 1, 1)
-
-        self.headerField = QLineEdit(self.gridLayoutWidget)
-        self.headerField.setObjectName(u"headerField")
-        self.headerField.setEnabled(False)
-
-        self.gridLayout.addWidget(self.headerField, 2, 1, 1, 1)
-
-        self.label_2 = QLabel(self.gridLayoutWidget)
-        self.label_2.setObjectName(u"label_2")
-
-        self.gridLayout.addWidget(self.label_2, 2, 0, 1, 1)
-
-        self.spinBox_3 = QSpinBox(self.gridLayoutWidget)
-        self.spinBox_3.setObjectName(u"spinBox_3")
-        self.spinBox_3.setEnabled(False)
-        self.spinBox_3.setMinimum(1)
-        self.spinBox_3.setMaximum(1000)
-
-        self.gridLayout.addWidget(self.spinBox_3, 8, 1, 1, 1)
-
-        self.checkBox_4 = QCheckBox(self.gridLayoutWidget)
-        self.checkBox_4.setObjectName(u"checkBox_4")
-
-        self.gridLayout.addWidget(self.checkBox_4, 11, 1, 1, 1)
-
-        self.checkBox_5 = QCheckBox(self.gridLayoutWidget)
-        self.checkBox_5.setObjectName(u"checkBox_5")
-
-        self.gridLayout.addWidget(self.checkBox_5, 12, 1, 1, 1)
-
-        self.logoLabel = QLabel(self.groupBox)
-        self.logoLabel.setObjectName(u"logoLabel")
-        self.logoLabel.setGeometry(QRect(10, 590, 251, 131))
-        self.logoLabel.setScaledContents(True)
         CalibrationApp.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(CalibrationApp)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 996, 26))
+        self.menubar.setGeometry(QRect(0, 0, 710, 26))
         CalibrationApp.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(CalibrationApp)
         self.statusbar.setObjectName(u"statusbar")
@@ -433,10 +449,31 @@ class Ui_CalibrationApp(object):
 
     def retranslateUi(self, CalibrationApp):
         CalibrationApp.setWindowTitle(QCoreApplication.translate("CalibrationApp", u"InViLab camera calibration app", None))
+        self.calibrateButton.setText(QCoreApplication.translate("CalibrationApp", u" Calibrate", None))
+        self.exportButton.setText(QCoreApplication.translate("CalibrationApp", u"Export", None))
+        self.statusText.setText(QCoreApplication.translate("CalibrationApp", u"Status: Ready", None))
+        self.groupBox_2.setTitle(QCoreApplication.translate("CalibrationApp", u"Image data", None))
+        self.label_2.setText(QCoreApplication.translate("CalibrationApp", u"Data header:", None))
+        self.browseButton.setText(QCoreApplication.translate("CalibrationApp", u"Browse", None))
+        self.groupBox.setTitle(QCoreApplication.translate("CalibrationApp", u"Checkerboard properties", None))
+        self.label_8.setText(QCoreApplication.translate("CalibrationApp", u"Row:", None))
+        self.label_6.setText(QCoreApplication.translate("CalibrationApp", u"Checker size [mm]:", None))
+        self.boardSizeCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Board size", None))
+        self.label_9.setText(QCoreApplication.translate("CalibrationApp", u"Column:", None))
+        self.label_7.setText(QCoreApplication.translate("CalibrationApp", u"Number of columns:", None))
+        self.label_4.setText(QCoreApplication.translate("CalibrationApp", u"Number of rows:", None))
+        self.markerCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Marker", None))
+        self.logoLabel.setText("")
+        self.groupBox_3.setTitle(QCoreApplication.translate("CalibrationApp", u"Detection options", None))
+        self.expandCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Expand", None))
+        self.predictCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Predict", None))
+        self.absoluteCheckBox.setText(QCoreApplication.translate("CalibrationApp", u"Absolute", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), QCoreApplication.translate("CalibrationApp", u"Main", None))
         self.minImageLabel.setText(QCoreApplication.translate("CalibrationApp", u"1", None))
         self.maxImageLabel.setText(QCoreApplication.translate("CalibrationApp", u"100", None))
         self.reprojErrLabel.setText(QCoreApplication.translate("CalibrationApp", u"Reprojection error = /", None))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.imageTab), QCoreApplication.translate("CalibrationApp", u"Calibration images", None))
+        self.imageNameLabel.setText(QCoreApplication.translate("CalibrationApp", u"Image name: /", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.imageTab), QCoreApplication.translate("CalibrationApp", u"Detections", None))
         self.RMSreprojErrLabel.setText(QCoreApplication.translate("CalibrationApp", u"RMS reprojection error = /", None))
         self.removeOutliersButton.setText(QCoreApplication.translate("CalibrationApp", u"Remove outliers", None))
         self.resetButton.setText(QCoreApplication.translate("CalibrationApp", u"Reset", None))
@@ -521,25 +558,6 @@ class Ui_CalibrationApp(object):
 
         self.label_3.setText(QCoreApplication.translate("CalibrationApp", u"Distortion parameters:", None))
         self.label_5.setText(QCoreApplication.translate("CalibrationApp", u"Intrinsic parameters:", None))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.calibrationParamsTab), QCoreApplication.translate("CalibrationApp", u"Calibration params", None))
-        self.groupBox.setTitle(QCoreApplication.translate("CalibrationApp", u"Calibration options", None))
-        self.calibrateButton.setText(QCoreApplication.translate("CalibrationApp", u" Calibrate", None))
-        self.label_9.setText(QCoreApplication.translate("CalibrationApp", u"Column:", None))
-        self.label_4.setText(QCoreApplication.translate("CalibrationApp", u"Number of rows:", None))
-        self.statusText.setText(QCoreApplication.translate("CalibrationApp", u"Ready", None))
-        self.statusLabel.setText(QCoreApplication.translate("CalibrationApp", u"Status:", None))
-        self.browseButton.setText(QCoreApplication.translate("CalibrationApp", u"Browse", None))
-        self.checkBox.setText(QCoreApplication.translate("CalibrationApp", u"Absolute", None))
-        self.label_6.setText(QCoreApplication.translate("CalibrationApp", u"Checker size [mm]:", None))
-        self.exportButton.setText(QCoreApplication.translate("CalibrationApp", u"Export", None))
-        self.label_7.setText(QCoreApplication.translate("CalibrationApp", u"Number of columns:", None))
-        self.checkBox_2.setText(QCoreApplication.translate("CalibrationApp", u"Marker", None))
-        self.label.setText(QCoreApplication.translate("CalibrationApp", u"File(s):", None))
-        self.checkBox_3.setText(QCoreApplication.translate("CalibrationApp", u"Board size", None))
-        self.label_8.setText(QCoreApplication.translate("CalibrationApp", u"Row:", None))
-        self.label_2.setText(QCoreApplication.translate("CalibrationApp", u"Data header:", None))
-        self.checkBox_4.setText(QCoreApplication.translate("CalibrationApp", u"Expand", None))
-        self.checkBox_5.setText(QCoreApplication.translate("CalibrationApp", u"Predict", None))
-        self.logoLabel.setText("")
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.calibrationParamsTab), QCoreApplication.translate("CalibrationApp", u"Parameters", None))
     # retranslateUi
 

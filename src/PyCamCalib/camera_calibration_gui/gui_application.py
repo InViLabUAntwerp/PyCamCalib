@@ -1,11 +1,10 @@
 """Module that contains the main code for the GUI."""
 
-from PySide6.QtCore import Signal, QThread, QObject, QSize
+from PySide6.QtCore import Signal, QThread, QObject, QSize, Slot
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QListWidgetItem
 from PySide6.QtGui import QIcon, QPixmap
-from PyCamCalib.core.exceptions import ImageError
+from PyCamCalib.core.exceptions import ImageError, CalibrationError
 from PyCamCalib.camera_calibration_gui.calibration_app_ui import Ui_CalibrationApp
-from PyCamCalib.core.feature_detection import FeatureDetector
 from PyCamCalib.core.calibration import CameraCalibrator, CameraParameters
 from PyCamCalib.camera_calibration_gui import invilab_icon, invilab_logo
 import os
@@ -23,6 +22,9 @@ else:
     data_class_available = True
 
 
+pg.setConfigOptions(imageAxisOrder='row-major')
+
+
 class CalibrationApp(QMainWindow, Ui_CalibrationApp):
     """The main GUI app."""
 
@@ -31,9 +33,9 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         super().__init__()
         self.setupUi(self)
         icon = QIcon()
-        icon.addFile(invilab_icon, QSize(), QIcon.Normal, QIcon.Off)
+        icon.addFile(str(invilab_icon), QSize(), QIcon.Normal, QIcon.Off)
         self.setWindowIcon(icon)
-        self.logoLabel.setPixmap(QPixmap(invilab_logo))
+        self.logoLabel.setPixmap(QPixmap(str(invilab_logo)))
         self.browseButton.clicked.connect(self.select_files)
         self.calibrateButton.clicked.connect(self.calibrate_camera)
         self.removeOutliersButton.clicked.connect(self.remove_outliers_pressed)
@@ -41,13 +43,18 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.imageSpinBox.valueChanged.connect(self.spinbox_value_changed)
         self.imageHorizontalSlider.valueChanged.connect(self.slider_value_changed)
         self.exportButton.clicked.connect(self.export_calibration_parameters)
+        self.boardSizeCheckBox.clicked.connect(self.board_check)
+        self.markerCheckBox.clicked.connect(self.mark_check)
+
+        self.l_plot = pg.PlotCurveItem()
+        self.s_plot = pg.ScatterPlotItem()
+        self.graphicsView.getView().addItem(self.l_plot)
+        self.graphicsView.getView().addItem(self.s_plot)
 
         # Hide some graphicsView functionalities
         self.graphicsView.ui.roiBtn.hide()
         self.graphicsView.ui.menuBtn.hide()
         self.graphicsView.ui.histogram.hide()
-        self.image_title = pg.TextItem("", color='r')
-        self.graphicsView.view.addItem(self.image_title)
         self.graphicsView.getView().menu = None
 
         self.calibrator: CameraCalibrator = CameraCalibrator()
@@ -62,6 +69,9 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.filter: str = ''
         """Which filter was used when selecting files."""
 
+        self.image_array: npt.NDArray = np.ndarray([])
+        """Array containing all images."""
+
         self.image_names: list = []
         """List of all loaded images. These are either the file names or indices."""
 
@@ -69,6 +79,22 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.data_class_available = data_class_available
         if not self.data_class_available:
             self.logger.warning("Could not find DataClass module. You will be unable to load ``DataClass`` files.")
+
+    def board_check(self):
+        if self.boardSizeCheckBox.isChecked():
+            self.nRowsSpinBox.setEnabled(True)
+            self.nColsSpinBox.setEnabled(True)
+        else:
+            self.nRowsSpinBox.setEnabled(False)
+            self.nColsSpinBox.setEnabled(False)
+
+    def mark_check(self):
+        if self.markerCheckBox.isChecked():
+            self.mRowSpinBox.setEnabled(True)
+            self.mColSpinBox.setEnabled(True)
+        else:
+            self.mRowSpinBox.setEnabled(False)
+            self.mColSpinBox.setEnabled(False)
 
     def select_files(self) -> None:
         """Open file explorer to select files."""
@@ -119,10 +145,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
 
     def calibrate_camera(self) -> None:
         """Perform camera calibration."""
-        tag = self.tagField.text()
-        if not tag or tag.isspace():
-            self.display_error("No tag", "A feature tag is required for calibration.")
-        elif not self.filenames:
+        if not self.filenames:
             self.display_error("No images", "Provide images for calibration.")
         elif self.filter.startswith("HDF5") and not self.headerField.text():
             self.display_error("Missing header", "Provide the header for the image data.")
@@ -139,12 +162,16 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.calibration_worker = CalibrateCameraWorker(self)
             self.calibration_worker.moveToThread(self.calibration_thread)
             self.calibration_thread.started.connect(self.calibration_worker.run)
+            self.calibration_worker.update.connect(self.update_status)
             self.calibration_worker.finished.connect(self.calibration_thread.quit)
             self.calibration_worker.finished.connect(self.calibration_worker.deleteLater)
             self.calibration_thread.finished.connect(self.calibration_thread.deleteLater)
             self.calibration_worker.finished.connect(self.calibrate_camera_finished)
-            self.calibration_worker.update.connect(self.update_image)
             self.calibration_thread.start()
+
+    @Slot(str)
+    def update_status(self, message):
+        self.statusText.setText(message)
 
     def remove_outliers_pressed(self):
         """Perform calibration without the marked calibration images."""
@@ -176,11 +203,8 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
 
     def calibrate_camera_finished(self, message):
         """Update the GUI after calibration has finished."""
-        if message == 5:
+        if message == 4:
             self.display_error("Unknown error", "An unknown error (probably related to loading the images) occurred!")
-        elif message == 4:
-            self.display_error("Tag error", "The provided tag is invalid, check the documentation for more info on "
-                                            "how to construct feature tags.")
         elif message == 3:
             self.display_error("Image error", "Failed to load data or data has wrong dimensions.")
         elif message == 2:
@@ -198,7 +222,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
                                                                 "calibration.")
         self.tabWidget.setEnabled(True)
         self.groupBox.setEnabled(True)
-        self.statusText.setText("Ready")
+        self.statusText.setText("Status: ready")
 
     def update_image_tab(self):
         """Update the image tab after finishing calibration."""
@@ -248,13 +272,17 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.reprojErrLabel.setText("Re-projection error = " + str(round(reproj_err, 4)))
         self.reprojErrLabel.adjustSize()
         image_name = self.image_names[idx]
-        self.update_image(self.calibrator.feature_list[idx].feature_image, image_name)
-
-    def update_image(self, image, title: str) -> None:
-        """Update the image in the graphics view."""
-        self.graphicsView.setImage(np.transpose(cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
-                                                (1, 0, 2)), levels=(0, 255))
-        self.image_title.setText(title)
+        image = self.image_array[..., idx]
+        self.imageNameLabel.setText("Image name: " + image_name)
+        self.graphicsView.setImage(image, levels=(0, 255))
+        x_coords = self.calibrator.feature_list[idx].image_points[:, 0]
+        y_coords = self.calibrator.feature_list[idx].image_points[:, 1]
+        if self.calibrator.feature_list[idx].score > 0:
+            color = (0, 255, 0)
+        else:
+            color = (255, 0, 0)
+        self.l_plot.setData(x=x_coords, y=y_coords, pen=color)
+        self.s_plot.setData(x=x_coords, y=y_coords, pen=color)
 
     def update_reproj_error_tab(self):
         """Update the re-projection error tab after calibration."""
@@ -322,7 +350,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
                 self.display_error("File error", "You are trying to write the parameters to an incompatible file.")
 
     def display_error(self, title: str, error_message: str) -> None:
-        """"Display an error message in a separate window."""
+        """Display an error message in a separate window."""
         error_box = QMessageBox(self)
         error_box.setText(error_message)
         error_box.setIcon(QMessageBox.Critical)
@@ -330,7 +358,7 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         error_box.exec_()
 
     def display_warning(self, title: str, warning_message: str) -> None:
-        """"Display an error message in a separate window."""
+        """Display an error message in a separate window."""
 
         error_box = QMessageBox(self)
         error_box.setText(warning_message)
@@ -345,8 +373,8 @@ class CalibrateCameraWorker(QObject):
     finished = Signal(int)
     """Signal that fires when the worker is finished."""
 
-    update = Signal(object, str)
-    """Signal that fires when the displayed image needs to be updated."""
+    update = Signal(str)
+    """Signal for updating the status text."""
 
     def __init__(self, app: CalibrationApp) -> None:
         super().__init__()
@@ -356,65 +384,61 @@ class CalibrateCameraWorker(QObject):
 
     def run(self) -> None:
         """Perform standard calibration."""
-        message = 5
-        try:
-            feature_detector = FeatureDetector(self.app.tagField.text())
-        except TagError:
-            logging.exception("message")
-            message = 4
+        message = 4
+        checker_size = self.app.checkerSizeSpinBox.value()
+        if self.app.boardSizeCheckBox.isChecked():
+            board_size = (self.app.nRowsSpinBox.value(), self.app.nColsSpinBox.value())
         else:
-            self.app.calibrator.feature_list = []
-            self.app.image_names = []
-            normalize = self.app.normalizeCheckBox.isChecked()
-            invert = self.app.invertCheckBox.isChecked()
+            board_size = None
+        if self.app.markerCheckBox.isChecked():
+            marker_location = (self.app.mRowSpinBox.value(), self.app.mColSpinBox.value())
+        else:
+            marker_location = None
+        expand = self.app.expandCheckBox.isChecked()
+        predict = self.app.predictCheckBox.isChecked()
+
+        self.update.emit("Status: loading images")
+        self.app.image_names = []
+        try:
+            if len(self.app.filenames) == 1:
+                self.app.image_array = self.app.load_image_data(self.app.filenames[0])
+                n_images = self.app.image_array.shape[-1]
+                for idx in range(n_images):
+                    image_name = 'image ' + str(idx)
+                    self.app.image_names.append(image_name)
+            else:
+                n_images = len(self.app.filenames)
+                for idx in range(n_images):
+                    image = self.app.load_image_data(self.app.filenames[idx])
+                    if idx == 0:
+                        self.app.image_array = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
+                    self.app.image_array[..., idx] = image
+                    image_name = os.path.basename(self.app.filenames[idx])
+                    self.app.image_names.append(image_name)
+        except KeyError:
+            logging.exception("message")
+            message = 2
+        else:
+            self.update.emit("Status: detecting checkerboards")
+            sensor_dimensions = np.array([self.app.image_array.shape[1], self.app.image_array.shape[0]])
             try:
-                if len(self.app.filenames) == 1:
-                    image_array = self.app.load_image_data(self.app.filenames[0])
-                    n_dims = len(image_array.shape)
-                    if not 3 <= n_dims <= 4:
-                        raise ImageError("Image data from single file should be 3- or 4-dimensional.")
-                    n_images = image_array.shape[-1]
-                    for idx in range(n_images):
-                        image = image_array[..., idx]
-                        image_name = 'image ' + str(idx)
-                        feature = feature_detector.detect_feature(image, normalize, invert)
-                        if not feature.score:
-                            self.app.logger.info("Failed feature detection on " + image_name + ".")
-                        self.app.calibrator.feature_list.append(feature)
-                        self.update.emit(feature.feature_image, image_name)
-                        self.app.image_names.append(image_name)
-                else:
-                    n_images = len(self.app.filenames)
-                    for idx in range(n_images):
-                        image = self.app.load_image_data(self.app.filenames[idx])
-                        n_dims = len(image.shape)
-                        if not 2 <= n_dims <= 3:
-                            raise ImageError("Image data from multiple files should be 2- or 3-dimensional.")
-                        image_name = os.path.basename(self.app.filenames[idx])
-                        feature = feature_detector.detect_feature(image, normalize, invert)
-                        if not feature.score:
-                            self.app.logger.info("Failed feature detection on " + image_name + ".")
-                        self.app.calibrator.feature_list.append(feature)
-                        self.update.emit(feature.feature_image, image_name)
-                        self.app.image_names.append(image_name)
+                self.app.calibrator.construct_feature_list(self.app.image_array, checker_size, board_size,
+                                                           marker_location, expand=expand, predict=predict)
             except ImageError:
                 logging.exception("message")
                 message = 3
-            except KeyError:
-                logging.exception("message")
-                message = 2
             else:
-                image_points_list, object_points_list = self.app.calibrator.construct_points_lists([])
-                if not image_points_list:
+                self.app.calibrator.construct_points_lists([])
+                if not self.app.calibrator.image_points_list:
                     message = 1
                 else:
-                    if len(image_points_list) < 11:
+                    if len(self.app.calibrator.image_points_list) < 11:
                         message = 0
                     else:
                         message = -1
-                    self.app.calibrator.sensor_dimensions = np.array([image.shape[1], image.shape[0]])
-                    self.app.calibration_parameters = self.app.calibrator.opencv_calibration(image_points_list,
-                                                                                             object_points_list)
+                    self.update.emit("Status: performing calibration")
+                    self.app.calibration_parameters = self.app.calibrator.opencv_calibration(sensor_dimensions)
+
         finally:
             self.finished.emit(message)
 
@@ -436,14 +460,14 @@ class CalibrateIndicesWorker(QObject):
 
     def run(self) -> None:
         """Perform calibration with indices."""
-        image_points_list, object_points_list = self.app.calibrator.construct_points_lists(self.indices)
-        if not image_points_list:
+        try:
+            self.app.calibration_parameters = self.app.calibrator.calibrate_indices(self.indices)
+        except CalibrationError:
             message = 1
         else:
-            if len(image_points_list) < 11:
+            if len(self.app.calibrator.indices) < 11:
                 message = 0
             else:
                 message = -1
-            self.app.calibration_parameters = self.app.calibrator.opencv_calibration(image_points_list,
-                                                                                     object_points_list)
-        self.finished.emit(message)
+        finally:
+            self.finished.emit(message)

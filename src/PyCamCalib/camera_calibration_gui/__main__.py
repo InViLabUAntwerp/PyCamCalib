@@ -3,6 +3,7 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from PyCamCalib.camera_calibration_gui.gui_application import CalibrationApp
+from PyCamCalib.logger_configuration import configure_logger
 
 
 def launch_gui() -> None:
@@ -14,4 +15,5 @@ def launch_gui() -> None:
 
 
 if __name__ == "__main__":
+    configure_logger()
     launch_gui()
