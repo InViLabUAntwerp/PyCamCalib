@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import Signal, QThread, QObject, QSize, Slot
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QListWidgetItem
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon, QPixmap, QAction
 from PyCamCalib.core.exceptions import ImageError, CalibrationError
 from PyCamCalib.camera_calibration_gui.calibration_app_ui import Ui_CalibrationApp
 from PyCamCalib.core.calibration import CameraCalibrator, CameraParameters
@@ -45,6 +45,10 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
         self.exportButton.clicked.connect(self.export_calibration_parameters)
         self.boardSizeCheckBox.clicked.connect(self.board_check)
         self.markerCheckBox.clicked.connect(self.mark_check)
+
+        actDelete = QAction("Delete", self)
+        actDelete.triggered.connect(self.delete_selected)
+        self.namesListWidget.addAction(actDelete)
 
         self.l_plot = pg.PlotCurveItem()
         self.s_plot = pg.ScatterPlotItem()
@@ -123,6 +127,15 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.headerField.setEnabled(False)
             self.headerField.clear()
 
+    def delete_selected(self):
+        """Delete currently selected parameter set from list."""
+
+        for item in self.namesListWidget.selectedItems():
+            idx = self.namesListWidget.indexFromItem(item)
+            self.namesListWidget.takeItem(idx.row())
+            self.filenames.pop(idx.row())
+            del item
+
     def load_image_data(self, full_path: str) -> npt.NDArray:
         """Load image data from file."""
         if self.filter.startswith("Image"):
@@ -149,6 +162,8 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             self.display_error("No images", "Provide images for calibration.")
         elif self.filter.startswith("HDF5") and not self.headerField.text():
             self.display_error("Missing header", "Provide the header for the image data.")
+        elif self.absoluteCheckBox.isChecked() and not self.boardSizeCheckBox.isChecked():
+            self.display_error("Missing board size", "Provide the board size if you only want to use features with absolute positions.")
         else:
             self.statusText.setText("Calibrating")
             self.groupBox.setEnabled(False)
@@ -266,23 +281,35 @@ class CalibrationApp(QMainWindow, Ui_CalibrationApp):
             reproj_err = self.calibrator.per_view_err[reproj_err_idx]
             self.reprojErrLabel.setText("Re-projection error = " + str(round(reproj_err, 4)))
         except ValueError:
+            # This occurs when the image was not used for the current calibration
             self.reprojErrLabel.setText("Re-projection error = /")
         except IndexError:
+            # This occurs when there is only one image
             reproj_err = float(self.calibrator.per_view_err)
             self.reprojErrLabel.setText("Re-projection error = " + str(round(reproj_err, 4)))
         self.reprojErrLabel.adjustSize()
         image_name = self.image_names[idx]
         image = self.image_array[..., idx]
         self.imageNameLabel.setText("Image name: " + image_name)
+        self.l_plot.clear()
+        self.s_plot.clear()
         self.graphicsView.setImage(image, levels=(0, 255))
-        x_coords = self.calibrator.feature_list[idx].image_points[:, 0]
-        y_coords = self.calibrator.feature_list[idx].image_points[:, 1]
         if self.calibrator.feature_list[idx].score > 0:
-            color = (0, 255, 0)
-        else:
-            color = (255, 0, 0)
-        self.l_plot.setData(x=x_coords, y=y_coords, pen=color)
-        self.s_plot.setData(x=x_coords, y=y_coords, pen=color)
+            x_coords = self.calibrator.feature_list[idx].image_points[:, 0]
+            y_coords = self.calibrator.feature_list[idx].image_points[:, 1]
+            if self.absoluteCheckBox.isChecked():
+                min_score = 2
+            else:
+                min_score = 1
+            if self.calibrator.feature_list[idx].score >= min_score:
+                if idx in self.calibrator.indices:
+                    color = (0, 255, 0)
+                else:
+                    color = (0, 0, 255)
+            else:
+                color = (255, 0, 0)
+            self.l_plot.setData(x=x_coords, y=y_coords, pen=color)
+            self.s_plot.setData(x=x_coords, y=y_coords, brush=color)
 
     def update_reproj_error_tab(self):
         """Update the re-projection error tab after calibration."""
@@ -396,6 +423,7 @@ class CalibrateCameraWorker(QObject):
             marker_location = None
         expand = self.app.expandCheckBox.isChecked()
         predict = self.app.predictCheckBox.isChecked()
+        absolute = self.app.absoluteCheckBox.isChecked()
 
         self.update.emit("Status: loading images")
         self.app.image_names = []
@@ -428,7 +456,7 @@ class CalibrateCameraWorker(QObject):
                 logging.exception("message")
                 message = 3
             else:
-                self.app.calibrator.construct_points_lists([])
+                self.app.calibrator.construct_points_lists([], absolute)
                 if not self.app.calibrator.image_points_list:
                     message = 1
                 else:
@@ -460,8 +488,9 @@ class CalibrateIndicesWorker(QObject):
 
     def run(self) -> None:
         """Perform calibration with indices."""
+        absolute = self.app.absoluteCheckBox.isChecked()
         try:
-            self.app.calibration_parameters = self.app.calibrator.calibrate_indices(self.indices)
+            self.app.calibration_parameters = self.app.calibrator.calibrate_indices(self.indices, absolute)
         except CalibrationError:
             message = 1
         else:

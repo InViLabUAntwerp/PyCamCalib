@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from PyCBD.pipelines import CBDPipeline
-from PyGeiger.detector import GeigerDetector
 from PyCamCalib.core.exceptions import ImageError
 import numpy as np
 import numpy.typing as npt
@@ -42,7 +41,7 @@ class FeatureDetector:
         self.units = 'mm'
         if marker is not None:
             raise NotImplementedError("Markers have not been implemented yet.")
-        self.detector = CBDPipeline(GeigerDetector(), **kwargs)
+        self.detector = CBDPipeline(**kwargs)
 
     def detect_feature(self, image: npt.NDArray) -> CalibrationFeature:
         """Attempt to detect the specified feature in the image.
@@ -61,9 +60,12 @@ class FeatureDetector:
             raise ImageError("There was an issue with the calibration image: " + str(e))
         except ValueError as e:
             raise ImageError("There was an issue with the calibration image: " + str(e))
-        object_points = np.concatenate((board_xy, np.zeros((board_xy.shape[0], 1))), -1)
-        calibration_feature = CalibrationFeature(score, board_uv.astype(np.float32),
-                                                 (object_points*self.space_between_features).astype(np.float32))
+        if score != 0:
+            object_points = np.concatenate((board_xy, np.zeros((board_xy.shape[0], 1))), -1)
+            calibration_feature = CalibrationFeature(score, board_uv.astype(np.float32),
+                                                     (object_points*self.space_between_features).astype(np.float32))
+        else:
+            calibration_feature = CalibrationFeature(score, np.array([]), np.array([]))
 
         return calibration_feature
 

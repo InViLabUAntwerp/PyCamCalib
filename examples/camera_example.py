@@ -37,6 +37,11 @@ for image_idx in range(n_images):
                  calibrator.image_points_list[feature_index][:, 1],
                  '-o', color='lime')
         color = 'g'
+    elif calibrator.feature_list[image_idx].score != 0:
+        plt.plot(calibrator.feature_list[image_idx].image_points[:, 0],
+                 calibrator.feature_list[image_idx].image_points[:, 1],
+                 '-o', color='r')
+        color = 'r'
     else:
         color = 'r'
     plt.title('Image nr ' + str(image_idx+1), color=color)
