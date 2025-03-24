@@ -5,14 +5,16 @@ Some scripts need to be executed in order.
 
 #%% Imports
 from PyCamCalib.core.calibration import CameraCalibrator, StereoCalibrator
+a=1
 import glob
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch, Rectangle
 
+
 #%% Load image sets for both cameras
-files = glob.glob('examples/stereo_images/left/*.tiff')
+files = glob.glob('stereo_images/left/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -20,7 +22,7 @@ for image_idx in range(n_images):
         image_array_1 = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
     image_array_1[..., image_idx] = image
 
-files = files = glob.glob('examples/stereo_images/right/*.tiff')
+files = files = glob.glob('stereo_images/right/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -37,7 +39,9 @@ param_r = camera_calibrator.calibrate(image_array_2, 1)
 # Perform stereo calibration
 stereo_calibrator = StereoCalibrator()
 stereo_parameters = stereo_calibrator.calibrate(image_array_1, image_array_2, param_l, param_r, 1, (6, 9))
-
+idx_new = stereo_calibrator.plot_and_filter_reproj_error()
+print(idx_new)
+stereo_parameters = stereo_calibrator.calibrate_indices(idx_new)
 #%% Show detections in matching images
 for image_idx in range(n_images):
     image_1 = image_array_1[..., image_idx]
@@ -79,6 +83,8 @@ stereo_calibrator.plot_reproj_error()
 #%% Retry calibration after removing potential outliers
 stereo_calibrator.calibrate_indices([1, 2, 3, 4, 5, 6, 7, 8])
 stereo_calibrator.plot_reproj_error()
+
+stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, '.\stereo_images2')
 
 #%% Undistort and rectify images
 # Calculate rectification transform and maps, only needs to be executed once.
@@ -146,4 +152,4 @@ axarr[1, 1].get_yaxis().set_visible(False)
 plt.show()
 
 #%% Save parameters
-stereo_parameters.save_parameters("example_stereo_parameters.h5")
+stereo_parameters.save_parameters("./calib/example_stereo_parameters.h5")

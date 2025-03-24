@@ -44,6 +44,7 @@ class CameraCalibrator:
         self.extrinsics_std: npt.NDArray[np.float64] = np.zeros(1)
         self.camera_parameters: CameraParameters = CameraParameters()
         self.FeatureDetector = None
+        self.FeatureDetector_logging = False
 
     def calibrate(self, image_array: npt.NDArray, space_between_features: float,
                   board_size: Optional[Tuple[int, int]] = None,
@@ -102,10 +103,15 @@ class CameraCalibrator:
         """
         self.feature_list = []
         if self.FeatureDetector is None:
-            feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
+
         #check if board_size, marker is none
         if board_size is not None and marker is not None:
-            feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector= FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
+        feature_detector = self.FeatureDetector
+
         n_images = image_array.shape[-1]
         for idx in range(n_images):
             feature = feature_detector.detect_feature(image_array[..., idx])
@@ -300,6 +306,8 @@ class StereoCalibrator:
         self.t_vecs: npt.NDArray[np.float64] = np.zeros((1, 3))
         self.per_view_err: npt.NDArray[np.float64] = np.zeros(1)
         self.rms_reproj_error: np.float64 = np.float64(0)
+        self.FeatureDetector = None
+        self.FeatureDetector_logging = False
 
     def calibrate(self,
                   image_array_1: npt.NDArray,
@@ -383,7 +391,15 @@ class StereoCalibrator:
         Unless you want to perform the calibration steps separately, you should not use this method.
         """
 
-        feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        if self.FeatureDetector is None:
+            self.FeatureDetector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
+
+        #check if board_size, marker is none
+        if board_size is not None and marker is not None:
+            self.FeatureDetector= FeatureDetector(space_between_features, board_size, marker, **kwargs)
+            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
+        feature_detector = self.FeatureDetector
         self.feature_list_1 = []
         n_images = image_array_1.shape[-1]
         for idx in range(n_images):
@@ -476,6 +492,85 @@ class StereoCalibrator:
 
         plt.show()
 
+    def plot_and_filter_reproj_error(self) -> list:
+        """Plot mean re-projection error and re-projection error for each calibration image."""
+        indices = list(map(str, self.indices))
+        cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 0]}
+
+        fig, ax = plt.subplots()
+        ax.axhline(self.rms_reproj_error, color='g', linestyle='--', label='RMS')
+        x = np.arange(len(indices))
+        width = 0.25
+        multiplier = 0
+        bars = []
+        for camera, measurement in cam_errs.items():
+            offset = width * multiplier
+            bars.append(ax.bar(x + offset, measurement, width, label=camera))
+            multiplier += 1
+
+        ax.set_xlabel("Image index")
+        ax.set_ylabel("Reprojection error")
+        ax.set_title("Reprojection error for each detected image")
+        ax.set_xticks(x + width, indices)
+        ax.legend(ncols=3)
+
+        selected_indices = []
+
+        def on_click(event):
+            for bar_group in bars:
+                for i, bar in enumerate(bar_group):
+                    if bar.contains(event)[0]:
+                        bar.set_color('r')
+                        selected_indices.append(self.indices[i])
+                        fig.canvas.draw()
+
+        def on_key(event):
+            if event.key == 'escape':
+                plt.close(fig)
+
+        fig.canvas.mpl_connect('button_press_event', on_click)
+        fig.canvas.mpl_connect('key_press_event', on_key)
+        plt.show()
+
+        not_selected_indices = [index for index in self.indices if index not in selected_indices]
+        return not_selected_indices
+
+    def save_checkerboard_detection_to_images(self, image_array_1, image_array_2, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        for image_idx in range(image_array_1.shape[-1]):
+            image_1 = image_array_1[..., image_idx]
+            image_2 = image_array_2[..., image_idx]
+            if len(image_1.shape) == 3:
+                image_1 = cv2.cvtColor(image_1, cv2.COLOR_BGR2RGB)
+                image_2 = cv2.cvtColor(image_2, cv2.COLOR_BGR2RGB)
+            else:
+                image_1 = cv2.cvtColor(image_1, cv2.COLOR_GRAY2RGB)
+                image_2 = cv2.cvtColor(image_2, cv2.COLOR_GRAY2RGB)
+
+            if image_idx in self.indices:
+                feature_index = self.indices.index(image_idx)
+                for point in self.image_points_list_1[feature_index]:
+                    cv2.circle(image_1, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
+                for point in self.image_points_list_2[feature_index]:
+                    cv2.circle(image_2, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
+            elif self.feature_list_1[image_idx].score != 0 and self.feature_list_2[image_idx].score != 0:
+                for point in self.feature_list_1[image_idx].image_points:
+                    cv2.circle(image_1, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
+                for point in self.feature_list_2[image_idx].image_points:
+                    cv2.circle(image_2, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
+
+            # Add the text to the images
+            cv2.putText(image_1, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image_1.shape[0] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.putText(image_2, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image_2.shape[0] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+            save_filename_1 = os.path.join(path, f'image_1_{image_idx + 1}.png')
+            save_filename_2 = os.path.join(path, f'image_2_{image_idx + 1}.png')
+            cv2.imwrite(save_filename_1, cv2.cvtColor(image_1, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(save_filename_2, cv2.cvtColor(image_2, cv2.COLOR_RGB2BGR))
+
 
 class StereoParameters:
     """
@@ -520,6 +615,7 @@ class StereoParameters:
         self.map_1_y = None
         self.map_2_x = None
         self.map_2_y = None
+        self.units = 'mm'
 
     def set_parameters_opencv(self, rms_reproj_error: float, R: npt.NDArray, T: npt.NDArray, E: npt.NDArray,
                               F: npt.NDArray) -> None:
@@ -541,8 +637,23 @@ class StereoParameters:
         :raises OSError: If the path contains forbidden characters or the selected file is not compatible.
         :raises FileNotFoundError: If the specified directory does not exist.
         """
-        self.camera_parameters_1.save_parameters(full_save_path, "camera_calibration/camera_1_parameters")
-        self.camera_parameters_2.save_parameters(full_save_path, "camera_calibration/camera_2_parameters")
+        directory_path = os.path.dirname(full_save_path)
+        # if dir does not exist
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+        if not os.path.exists(directory_path+"/camera_calibration"):
+            os.makedirs(directory_path+"/camera_calibration")
+        self.camera_parameters_1.save_parameters(directory_path+"/camera_calibration/camera_1_parameters.h5")
+
+        self.camera_parameters_1.save_parameters_to_json(directory_path+"/camera_calibration/camera_1_parameters.json")
+        self.camera_parameters_2.save_parameters(directory_path+"/camera_calibration/camera_2_parameters.h5")
+        self.camera_parameters_2.save_parameters_to_json(directory_path+"/camera_calibration/camera_2_parameters.json")
+        H = TransformationMatrix()
+        H.T = self.T
+        H.R = self.R
+        H.units = self.units
+        H.info = ["Camera1", "Camera2"]
+        H.save_to_json(directory_path+ '/extrinsics.json')
         with h5py.File(full_save_path, "a") as file:
             try:
                 file.create_dataset("camera_calibration/stereo_parameters/rms_reproj_error", data=self.rms_reproj_error)
@@ -550,6 +661,7 @@ class StereoParameters:
                 file.create_dataset("camera_calibration/stereo_parameters/T", data=self.T)
                 file.create_dataset("camera_calibration/stereo_parameters/E", data=self.E)
                 file.create_dataset("camera_calibration/stereo_parameters/F", data=self.F)
+
             except ValueError:
                 file["camera_calibration/stereo_parameters/rms_reproj_error"][()] = self.rms_reproj_error
                 file["camera_calibration/stereo_parameters/R"][()] = self.R
