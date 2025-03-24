@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from PyCamCalib.core.exceptions import CalibrationError
 from PyCamCalib.core.feature_detection import FeatureDetector
 import logging
-
+import os
+from PyCamCalib.core.CameraParameters import *
 
 class CameraCalibrator:
     """Object used to calibrate a camera.
@@ -42,6 +43,7 @@ class CameraCalibrator:
         self.t_vecs: npt.NDArray[np.float64] = np.zeros((1, 3))
         self.extrinsics_std: npt.NDArray[np.float64] = np.zeros(1)
         self.camera_parameters: CameraParameters = CameraParameters()
+        self.FeatureDetector = None
 
     def calibrate(self, image_array: npt.NDArray, space_between_features: float,
                   board_size: Optional[Tuple[int, int]] = None,
@@ -99,7 +101,11 @@ class CameraCalibrator:
         Unless you want to perform the calibration steps separately, you should not use this method.
         """
         self.feature_list = []
-        feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        if self.FeatureDetector is None:
+            feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        #check if board_size, marker is none
+        if board_size is not None and marker is not None:
+            feature_detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
         n_images = image_array.shape[-1]
         for idx in range(n_images):
             feature = feature_detector.detect_feature(image_array[..., idx])
@@ -189,6 +195,40 @@ class CameraCalibrator:
 
         return camera_parameters
 
+    def plot_and_filter_reproj_error(self) -> list:
+        info = "Select high rms, and press exit"
+        indices = self.indices
+        per_view_err = self.per_view_err
+        fig, ax = plt.subplots()
+        bars = ax.bar(indices, per_view_err)
+        ax.set_xticks(indices)
+        ax.set_xticklabels(indices, rotation=90, fontsize=8)
+        plt.xlabel("Image index")
+        plt.ylabel("Reprojection error")
+        plt.title("Reprojection error for each detected image")
+        line = plt.axhline(self.rms_reproj_error, color='g', linestyle='--')
+        plt.legend([bars, line], ['Image', 'RMS'], ncols=2)
+
+        selected_indices = []
+
+        def on_click(event):
+            for i, bar in enumerate(bars):
+                if bar.contains(event)[0]:
+                    bar.set_color('r')
+                    selected_indices.append(indices[i])
+                    fig.canvas.draw()
+
+        def on_key(event):
+            if event.key == 'escape':
+                plt.close(fig)
+
+        fig.canvas.mpl_connect('button_press_event', on_click)
+        fig.canvas.mpl_connect('key_press_event', on_key)
+        plt.show()
+
+        not_selected_indices = [index for index in indices if index not in selected_indices]
+        return not_selected_indices
+
     def plot_reproj_error(self) -> None:
         """Plot mean re-projection error and re-projection error for each calibration image."""
         plt.cla()
@@ -200,245 +240,31 @@ class CameraCalibrator:
         plt.legend([bars, line], ['Image', 'RMS'], ncols=2)
         plt.show()
 
+    def save_checkerboard_detection_to_images(self,image_array,path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        for image_idx in range(image_array.shape[-1]):
+            image = image_array[..., image_idx]
+            if len(image.shape) == 3:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
-class CameraParameters:
-    """Object that contains all camera calibration parameters.
+            if image_idx in self.indices:
+                feature_index = self.indices.index(image_idx)
+                for point in self.image_points_list[feature_index]:
+                    cv2.circle(image, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
+            elif self.feature_list[image_idx].score != 0:
+                for point in self.feature_list[image_idx].image_points:
+                    cv2.circle(image, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
+            # Add the text to the image
+            cv2.putText(image, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image.shape[0] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
-    :var f: Focal length in pixels (x, y).
-    :var f_std: Standard deviation of focal length (x, y).
-    :var c: Principal point in pixels (x, y).
-    :var c_std: Standard deviation of principal point (x, y).
-    :var s: Skew.
-    :var s_std: Standard deviation of skew.
-    :var radial_dist_coeffs: Radial distortion coefficients.
-    :var radial_dist_coeffs: Standard deviations of radial distortion coefficients.
-    :var tangential_dist_coeffs: Tangential distortion coefficients.
-    :var tangential_dist_coeffs_std: Standard deviations of tangential distortion coefficients.
-    :var rms_reproj_error: Overall rms re-projection error.
-    :var sensor_dimensions: Sensor dimensions in pixels (w, h).
-    :var map_x: x map for distortion correction.
-    :var map_y: y map for distortion correction.
-    :var roi: ROI used to crop image after distortion correction.
-    """
+            save_filename = os.path.join(path, f'image_{image_idx + 1}.png')
+            cv2.imwrite(save_filename, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
 
-    def __init__(self) -> None:
-        """Class constructor."""
-        self.f: npt.NDArray[np.float64] = np.zeros(2)
-        self.f_std: npt.NDArray[np.float64] = np.zeros(2)
-        self.c: npt.NDArray[np.float64] = np.zeros(2)
-        self.c_std: npt.NDArray[np.float64] = np.zeros(2)
-        self.s: np.float64 = np.float64(0)
-        self.s_std: np.float64 = np.float64(0)
-        self.radial_dist_coeffs: npt.NDArray[np.float64] = np.zeros(3)
-        self.radial_dist_coeffs_std: npt.NDArray[np.float64] = np.zeros(3)
-        self.tangential_dist_coeffs: npt.NDArray[np.float64] = np.zeros(2)
-        self.tangential_dist_coeffs_std: npt.NDArray[np.float64] = np.zeros(2)
-        self.rms_reproj_error: np.float64 = np.float64(0)
-        self.sensor_dimensions: npt.NDArray[np.int32] = np.zeros(2, dtype=np.int32)
-        self.map_x: Optional[npt.NDArray] = None
-        self.map_y: Optional[npt.NDArray] = None
-        self.roi: Optional[Tuple[int, int, int, int]] = None
 
-    def get_afov(self) -> Tuple[np.float64, np.float64]:
-        """Get the angular field of view in degrees.
-
-        :returns: A tuple with the horizontal and vertical angular field of view in degrees.
-        """
-        h_afov = np.rad2deg(2 * np.arctan2(self.sensor_dimensions[0], 2 * self.f[0]))
-        v_afov = np.rad2deg(2 * np.arctan2(self.sensor_dimensions[1], 2 * self.f[1]))
-
-        return h_afov, v_afov
-
-    def get_fov(self, working_distance: float) -> Tuple[float, float]:
-        """Calculate the size of the field of view.
-
-        :param working_distance: The distance between the camera and object.
-        :returns: The field of view as (horizontal, vertical).
-        """
-        afov = self.get_afov()
-        h_fov = 2 * working_distance * np.tan(np.deg2rad(afov[0] / 2))
-        v_fov = 2 * working_distance * np.tan(np.deg2rad(afov[1] / 2))
-
-        return h_fov, v_fov
-
-    def get_intrinsics_matrix_opencv(self) -> npt.NDArray[np.float64]:
-        """Get the intrinsics matrix in OpenCV format.
-
-        :returns: A 3x3 array with the intrinsic camera parameters in OpenCV format.
-        """
-        intrinsics_matrix = np.array([[self.f[0], 0, self.c[0]], [0, self.f[1], self.c[1]], [0, 0, 1]])
-
-        return intrinsics_matrix
-
-    def get_distortion_coeffs_opencv(self) -> npt.NDArray[np.float64]:
-        """Get a vector of the distortion coefficients in OpenCV format.
-
-        :returns: A 5 element vector with the distortion coefficients in opencv format.
-        """
-        return np.array([self.radial_dist_coeffs[0], self.radial_dist_coeffs[1], self.tangential_dist_coeffs[0],
-                         self.tangential_dist_coeffs[1], self.radial_dist_coeffs[2]])
-
-    def calculate_undistort_map(self, alpha: float = 0,
-                                fixed_point_maps: bool = False) -> None:
-        """Calculate the maps necessary for pixel remapping (removing distortion).
-
-        :param alpha: Free scaling parameter between 0 (when all the pixels in the undistorted image are valid) and 1
-            (when all the source image pixels are retained in the undistorted image). If you set this at -1 OpenCV
-            automatically pick a value.
-        :param fixed_point_maps: Whether to transform the floating points map to a fixed-point representation. This
-            speeds up pixel remapping, which might be useful for live video feeds.
-        """
-        intrinsics_matrix = self.get_intrinsics_matrix_opencv()
-        distortion_coeffs = self.get_distortion_coeffs_opencv()
-        dimensions = self.sensor_dimensions
-        if fixed_point_maps:
-            map_type = cv2.CV_16SC2
-        else:
-            map_type = cv2.CV_32FC1
-        new_intrinsics_matrix, self.roi = cv2.getOptimalNewCameraMatrix(intrinsics_matrix, distortion_coeffs,
-                                                                        dimensions, alpha)
-        self.map_x, self.map_y = cv2.initUndistortRectifyMap(intrinsics_matrix, distortion_coeffs, None,
-                                                             new_intrinsics_matrix, dimensions, map_type)
-
-    def remap_image(self, image: npt.NDArray) -> npt.NDArray:
-        """Remaps the image to remove distortion
-
-        Undistort an image with the maps that were calculated using :py:meth:`calculate_undistort_map`.
-
-        :param image: The image that needs to be remapped, this is either a 2D or 3D array.
-        :returns: The undistorted image.
-        """
-        try:
-            undistorted = cv2.remap(image, self.map_x, self.map_y, cv2.INTER_LINEAR)
-        except cv2.error as e:
-            raise Exception("You probably did not calculate the undistort map before remapping.") from e
-
-        return undistorted
-
-    def set_parameters_opencv(self, rms_reproj_error: float,
-                              intrinsics_matrix: npt.NDArray,
-                              dist_coeffs: npt.NDArray,
-                              intrinsics_std: npt.NDArray,
-                              sensor_dimensions: npt.NDArray) -> None:
-        """Save parameters from opencv calibration to object."""
-        self.f = np.array([intrinsics_matrix[0, 0], intrinsics_matrix[1, 1]])
-        self.f_std = np.array([intrinsics_std[0], intrinsics_std[1]])
-        self.c = np.array([intrinsics_matrix[0, 2], intrinsics_matrix[1, 2]])
-        self.c_std = np.array([intrinsics_std[2], intrinsics_std[3]])
-        self.s = np.float64(0)
-        self.s_std = np.float64(0)
-        self.radial_dist_coeffs = np.array([dist_coeffs[0], dist_coeffs[1], dist_coeffs[2]])
-        self.radial_dist_coeffs_std = np.array([intrinsics_std[4], intrinsics_std[5], intrinsics_std[8]])
-        self.tangential_dist_coeffs = np.array([dist_coeffs[2], dist_coeffs[3]])
-        self.tangential_dist_coeffs_std = np.array([intrinsics_std[6], intrinsics_std[7]])
-        self.rms_reproj_error = rms_reproj_error
-        self.sensor_dimensions = sensor_dimensions
-        self.map_x = None
-        self.map_y = None
-        self. roi = None
-
-    def save_parameters(self, full_save_path: str, internal_path: str = "camera_calibration/camera_parameters") -> None:
-        """Save calibration parameters to .h5 file
-
-        If the file specified in `full_save_path` does not exist, a new file will be created. If the file already
-        exists, the parameters will be added to the specified file. If the file already exists and it already has
-        calibration parameters, these parameters will be overwritten.
-
-        :param full_save_path: Full filepath with directory and filename.
-        :param internal_path: Internal h5 file directory where the parameters should be saved, use '/'as separator.
-        :raises OSError: If the path contains forbidden characters or the selected file is not compatible.
-        :raises FileNotFoundError: If the specified directory does not exist.
-        """
-        with h5py.File(full_save_path, "a") as file:
-            try:
-                file.create_dataset(internal_path + "/f", data=self.f)
-                file.create_dataset(internal_path + "/f_std", data=self.f_std)
-                file.create_dataset(internal_path + "/c", data=self.c)
-                file.create_dataset(internal_path + "/c_std", data=self.c_std)
-                file.create_dataset(internal_path + "/s", data=self.s)
-                file.create_dataset(internal_path + "/s_std", data=self.s_std)
-                file.create_dataset(internal_path + "/radial_dist_coeffs", data=self.radial_dist_coeffs)
-                file.create_dataset(internal_path + "/radial_dist_coeffs_std", data=self.radial_dist_coeffs_std)
-                file.create_dataset(internal_path + "/tangential_dist_coeffs", data=self.tangential_dist_coeffs)
-                file.create_dataset(internal_path + "/tangential_dist_coeffs_std", data=self.tangential_dist_coeffs_std)
-                file.create_dataset(internal_path + "/rms_reproj_err", data=self.rms_reproj_error)
-                file.create_dataset(internal_path + "/sensor_dimensions", data=self.sensor_dimensions)
-            except ValueError:
-                file[internal_path + "/f"][()] = self.f
-                file[internal_path + "/f_std"][()] = self.f_std
-                file[internal_path + "/c"][()] = self.c
-                file[internal_path + "/c_std"][()] = self.c_std
-                file[internal_path + "/s"][()] = self.s
-                file[internal_path + "/s_std"][()] = self.s_std
-                file[internal_path + "/radial_dist_coeffs"][()] = self.radial_dist_coeffs
-                file[internal_path + "/radial_dist_coeffs_std"][()] = self.radial_dist_coeffs_std
-                file[internal_path + "/tangential_dist_coeffs"][()] = self.tangential_dist_coeffs
-                file[internal_path + "/tangential_dist_coeffs_std"][()] = self.tangential_dist_coeffs_std
-                file[internal_path + "/rms_reproj_err"][()] = self.rms_reproj_error
-                file[internal_path + "/sensor_dimensions"][()] = self.sensor_dimensions
-
-    def load_parameters(self, full_save_path: str, internal_path: str = "camera_calibration/camera_parameters") -> None:
-        """Load calibration parameters from .h5 file into object.
-
-        :param full_save_path: Full filepath with directory and filename.
-        :param internal_path: Internal h5 file directory where the parameters are saved, use '/'as separator.
-        :raises KeyError: If there are no calibration parameters in the h5 file.
-        :raises OSError: If the path contains forbidden characters or an incompatible file is used.
-        :raises FileNotFoundError: If specified file does not exist.
-        """
-        with h5py.File(full_save_path, "r") as file:
-            try:
-                self.f = file[internal_path + "/f"][()]
-                self.f_std = file[internal_path + "/f_std"][()]
-                self.c = file[internal_path + "/c"][()]
-                self.c_std = file[internal_path + "/c_std"][()]
-                self.s = file[internal_path + "/s"][()]
-                self.s_std = file[internal_path + "/s_std"][()]
-                self.radial_dist_coeffs = file[internal_path + "/radial_dist_coeffs"][()]
-                self.radial_dist_coeffs_std = file[internal_path + "/radial_dist_coeffs_std"][()]
-                self.tangential_dist_coeffs = file[internal_path + "/tangential_dist_coeffs"][()]
-                self.tangential_dist_coeffs_std = file[internal_path + "/tangential_dist_coeffs_std"][()]
-                self.rms_reproj_error = file[internal_path + "/rms_reproj_err"][()]
-                self.sensor_dimensions = file[internal_path + "/sensor_dimensions"][()]
-            except KeyError as e:
-                raise KeyError("File does not contain calibration parameters.") from e
-
-    def plot_distortion(self) -> None:
-        """Plot camera distortion."""
-        width = self.sensor_dimensions[0]
-        height = self.sensor_dimensions[1]
-        m = self.get_intrinsics_matrix_opencv()
-        d = self.get_distortion_coeffs_opencv()
-        n_steps = 20
-        [u, v] = np.meshgrid(np.linspace(0, width - 1, n_steps), np.linspace(0, height - 1, n_steps))
-        xyz = np.linalg.solve(m, np.vstack((np.ravel(u, order='F'), np.ravel(v, order='F'), np.ones(u.size))))
-        xp = xyz[0, :] / xyz[2, :]
-        yp = xyz[1, :] / xyz[2, :]
-        r2 = xp ** 2 + yp ** 2
-        r4 = r2 ** 2
-        r6 = r2 ** 3
-        coef = 1 + np.dot(d[0], r2) + np.dot(d[1], r4) + np.dot(d[4], r6)
-        xpp = xp * coef + 2 * np.dot(d[2], (xp * yp)) + np.dot(d[3], (r2 + 2 * xp ** 2))
-        ypp = yp * coef + np.dot(d[2], (r2 + 2 * yp ** 2)) + 2 * np.dot(d[3], (xp * yp))
-        u2 = m[0, 0] * xpp + m[0, 2]
-        v2 = m[1, 1] * ypp + m[1, 2]
-        du = u2 - np.ravel(u, order='F')
-        dv = v2 - np.ravel(v, order='F')
-        dr = np.reshape(np.hypot(du, dv), u.shape, order='F')
-
-        # plot
-        plt.cla()
-        plt.quiver(np.ravel(u, order='F') + 1, np.ravel(v, order='F') + 1, du, dv, color='b')
-        plt.plot(width / 2, height / 2, 'x', label='Sensor center')
-        plt.plot(m[0, 2], m[1, 2], 'o', label='Principal point')
-        contour_set = plt.contour(u[0, :] + 1, v[:, 0] + 1, dr, colors='k')
-        plt.clabel(contour_set, inline=1, fontsize=10)
-        plt.xlim(1, width)
-        plt.ylim(1, height)
-        plt.title('Radial distortion model')
-        plt.xlabel('Horizontal')
-        plt.ylabel('Vertical')
-        plt.show()
 
 
 class StereoCalibrator:

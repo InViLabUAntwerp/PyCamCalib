@@ -10,9 +10,11 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import matplotlib
+matplotlib.use('TkAgg')
 
 #%% Load images into array
-files = glob.glob('examples/camera_images/*.tiff')
+files = glob.glob('camera_images/*.tiff')
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -47,16 +49,20 @@ for image_idx in range(n_images):
     plt.title('Image nr ' + str(image_idx+1), color=color)
     plt.gca().get_xaxis().set_visible(False)
     plt.gca().get_yaxis().set_visible(False)
-    plt.show()
+    plt.show(block = True)
 
 #%% Plot reprojection errors
 calibrator.plot_reproj_error()
 
 #%% Retry calibration after removing potential outliers
 # There are none but this is for the sake of the example.
-calibrator.calibrate_indices([0, 1, 2, 4, 5, 7, 8, 9, 10])
-calibrator.plot_reproj_error()
 
+#calibrator.calibrate_indices([0, 1, 2, 4, 5, 7, 8, 9, 10])
+#calibrator.plot_reproj_error()
+
+new_indices = calibrator.plot_and_filter_reproj_error()
+calibrator.calibrate_indices(new_indices)
+calibrator.plot_reproj_error()
 #%% Visualize distortion
 camera_parameters.plot_distortion()
 
