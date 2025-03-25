@@ -147,15 +147,27 @@ class CameraCalibrator:
                     self.object_points_list.append(feature.object_points)
                     self.indices.append(idx)
 
+    def initilize_camera_parameters(self,fx,fy,cx,cy):
+        self.camera_parameters = CameraParameters()
+        self.camera_parameters.fx = fx
+        self.camera_parameters.fy = fy
+        self.camera_parameters.cx = cx
+        self.camera_parameters.cy = cy
+
     def opencv_calibration(self, sensor_dimensions: npt.NDArray[np.int32]) -> CameraParameters:
         """Regular OpenCV camera calibration.
 
          Unless you want to perform the calibration steps separately, you should not use this method.
         """
         self.sensor_dimensions = sensor_dimensions
+
+        if self.camera_parameters is None:
+            cameraMatrix = None
+        else:
+            cameraMatrix = self.camera_parameters.get_intrinsics_matrix_opencv()
         rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
         per_view_err = cv2.calibrateCameraExtended(self.object_points_list, self.image_points_list, sensor_dimensions,
-                                                   None, None)
+                                                   cameraMatrix, None)
 
         # Convert some parameter datatypes and reshape some matrices
         self.rms_reproj_error = np.float64(rms_reproj_error)
@@ -259,7 +271,10 @@ class CameraCalibrator:
             if image_idx in self.indices:
                 feature_index = self.indices.index(image_idx)
                 for point in self.image_points_list[feature_index]:
-                    cv2.circle(image, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
+                    try:
+                        cv2.circle(image, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
+                    except:
+                        pass
             elif self.feature_list[image_idx].score != 0:
                 for point in self.feature_list[image_idx].image_points:
                     cv2.circle(image, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
@@ -616,6 +631,7 @@ class StereoParameters:
         self.map_2_x = None
         self.map_2_y = None
         self.units = 'mm'
+        self.info = ["Camera1", "Camera2"]
 
     def set_parameters_opencv(self, rms_reproj_error: float, R: npt.NDArray, T: npt.NDArray, E: npt.NDArray,
                               F: npt.NDArray) -> None:
@@ -652,8 +668,8 @@ class StereoParameters:
         H.T = self.T
         H.R = self.R
         H.units = self.units
-        H.info = ["Camera1", "Camera2"]
-        H.save_to_json(directory_path+ '/extrinsics.json')
+        H.info = self.info
+        H.save_to_json(os.path.splitext(full_save_path)[0]+ '_TransformationMatrix.json')
         with h5py.File(full_save_path, "a") as file:
             try:
                 file.create_dataset("camera_calibration/stereo_parameters/rms_reproj_error", data=self.rms_reproj_error)

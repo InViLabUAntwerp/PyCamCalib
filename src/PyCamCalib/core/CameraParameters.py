@@ -272,6 +272,62 @@ class CameraParameters:
         plt.ylabel('Vertical')
         plt.show()
 
+    def save_distortion_image(self, save_path: str = "distortion_plot.png") -> None:
+        """Plot and save camera distortion image instead of displaying it."""
+        width = self.sensor_dimensions[0]
+        height = self.sensor_dimensions[1]
+        m = self.get_intrinsics_matrix_opencv()
+        d = self.get_distortion_coeffs_opencv()
+        n_steps = 20
+        [u, v] = np.meshgrid(np.linspace(0, width - 1, n_steps), np.linspace(0, height - 1, n_steps))
+        xyz = np.linalg.solve(m, np.vstack((np.ravel(u, order='F'), np.ravel(v, order='F'), np.ones(u.size))))
+        xp = xyz[0, :] / xyz[2, :]
+        yp = xyz[1, :] / xyz[2, :]
+        r2 = xp ** 2 + yp ** 2
+        r4 = r2 ** 2
+        r6 = r2 ** 3
+
+        # Check if there is no distortion
+        if d[0] == 0:
+            xpp = xp
+            ypp = yp
+        else:
+            # Radial distortion
+            coef = 1 + d[0] * r2 + d[1] * r4 + d[4] * r6
+
+            # Tangential distortion
+            if d[2] != 0 or d[3] != 0:
+                xpp = xp * coef + 2 * d[2] * (xp * yp) + d[3] * (r2 + 2 * xp ** 2)
+                ypp = yp * coef + d[2] * (r2 + 2 * yp ** 2) + 2 * d[3] * (xp * yp)
+            else:
+                xpp = xp * coef
+                ypp = yp * coef
+
+        u2 = m[0, 0] * xpp + m[0, 2]
+        v2 = m[1, 1] * ypp + m[1, 2]
+        du = u2 - np.ravel(u, order='F')
+        dv = v2 - np.ravel(v, order='F')
+        dr = np.reshape(np.hypot(du, dv), u.shape, order='F')
+
+        # Plot
+        plt.cla()
+        if d[0] != 0:
+            plt.quiver(np.ravel(u, order='F') + 1, np.ravel(v, order='F') + 1, du, dv, color='b')
+        plt.plot(width / 2, height / 2, 'x', label='Sensor center')
+        plt.plot(m[0, 2], m[1, 2], 'o', label='Principal point')
+        if d[0] != 0:
+            contour_set = plt.contour(u[0, :] + 1, v[:, 0] + 1, dr, colors='k')
+            plt.clabel(contour_set, inline=1, fontsize=10)
+        plt.xlim(1, width)
+        plt.ylim(1, height)
+        plt.title('Radial distortion model')
+        plt.xlabel('Horizontal')
+        plt.ylabel('Vertical')
+
+        # Save the plot instead of showing it
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()  # Close the figure to free memory
+
     @property
     def focal_length_mm(self) -> Tuple[float, float]:
         """Get the focal length in millimeters."""

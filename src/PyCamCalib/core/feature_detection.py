@@ -53,8 +53,13 @@ class FeatureDetector:
 
         try:
             if self.board_size is None:
+                if image.shape[-1] == 1:
+                    image = image[:, :, 0]
+
                 score, board_uv, board_xy = self.detector.detect_checkerboard(image)
             else:
+                if image.shape[-1] == 1:
+                    image = image[:, :, 0]
                 score, board_uv, board_xy = self.detector.detect_checkerboard(image, self.board_size)
         except TypeError as e:
             raise ImageError("There was an issue with the calibration image: " + str(e))
