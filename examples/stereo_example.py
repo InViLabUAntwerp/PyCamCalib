@@ -39,9 +39,13 @@ param_r = camera_calibrator.calibrate(image_array_2, 1)
 # Perform stereo calibration
 stereo_calibrator = StereoCalibrator()
 stereo_parameters = stereo_calibrator.calibrate(image_array_1, image_array_2, param_l, param_r, 1, (6, 9))
+# Remove bad detections
 idx_new = stereo_calibrator.plot_and_filter_reproj_error()
 print(idx_new)
 stereo_parameters = stereo_calibrator.calibrate_indices(idx_new)
+# Save checkerboard detection to images (for debugging)
+stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, '.\stereo_imagesdetected')
+
 #%% Show detections in matching images
 for image_idx in range(n_images):
     image_1 = image_array_1[..., image_idx]
@@ -78,13 +82,12 @@ for image_idx in range(n_images):
     plt.show()
 
 #%% Plot reprojection errors
-stereo_calibrator.plot_reproj_error()
+#stereo_calibrator.plot_reproj_error()
 
 #%% Retry calibration after removing potential outliers
-stereo_calibrator.calibrate_indices([1, 2, 3, 4, 5, 6, 7, 8])
-stereo_calibrator.plot_reproj_error()
+#stereo_calibrator.calibrate_indices([1, 2, 3, 4, 5, 6, 7, 8])
+#stereo_calibrator.plot_reproj_error()
 
-stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, '.\stereo_images2')
 
 #%% Undistort and rectify images
 # Calculate rectification transform and maps, only needs to be executed once.

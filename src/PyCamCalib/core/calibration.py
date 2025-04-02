@@ -7,6 +7,8 @@ import cv2
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
+from rx import empty
+
 from PyCamCalib.core.exceptions import CalibrationError
 from PyCamCalib.core.feature_detection import FeatureDetector
 import logging
@@ -242,7 +244,7 @@ class CameraCalibrator:
 
         fig.canvas.mpl_connect('button_press_event', on_click)
         fig.canvas.mpl_connect('key_press_event', on_key)
-        plt.show()
+        plt.show(block=True)
 
         not_selected_indices = [index for index in indices if index not in selected_indices]
         return not_selected_indices
@@ -373,6 +375,48 @@ class StereoCalibrator:
 
         return self.stereo_parameters
 
+    def calibrate_from_features(self,
+                  image_points_list_1: list,
+                  image_points_list_2: list,
+                  parameters_1: CameraParameters,
+                  parameters_2: CameraParameters,
+                  space_between_features: float,
+                  board_size: Tuple[int, int],
+                  objectlist,
+                  **kwargs) -> StereoParameters:
+        """Perform stereo calibration.
+
+        Stereo calibrate 2 cameras with 2 matching arrays of images of a calibration target, one for each image.
+
+        :param image_array_1: Array containing all images for camera 1 that will be used for calibration. It can either
+           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
+        :param image_array_2: Array containing all images for camera 2 that will be used for calibration. It can either
+           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
+        :param parameters_1: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 1.
+        :param parameters_2: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 2.
+        :param space_between_features: Checker size in mm. You can set this to 1 if you don't care about scaling.
+        :param board_size: Size of the board in (rows, columns)
+        :param marker: Position of the marker if there is a marker present. Not implemented yet.
+        :param kwargs: kwargs passed along to the :py:class:`~PyCamCalib.core.feature_detection.FeatureDetector`.
+           Available keywords are:
+           `expand`: set this to True, if you want to try to expand the checkerboard past obstructions
+           `predict`: set this to True if you want to predict missing checkerboard corners
+           `out_of_image`: set this to True if you want the predictions to include points that lie beyond the image
+           borders.
+        :returns: An object that contains all calibration parameter data.
+        :raises TypeError: When image_array_1 or image_array_2 is not a numpy array.
+        :raises CalibrationError: When no features were detected in any of the images.
+        """
+
+        self.image_points_list_1 = image_points_list_1
+        self.image_points_list_2 = image_points_list_2
+        self.board_size = board_size
+        self.space_between_features = space_between_features
+        self.object_points_list = objectlist
+        self._logger.info("Performing calibration")
+        self.stereo_parameters = self.opencv_calibration(parameters_1, parameters_2)
+
+        return self.stereo_parameters
     def calibrate_indices(self, indices: list) -> StereoParameters:
         """Repeat calibration with selected samples.
 
@@ -438,6 +482,26 @@ class StereoCalibrator:
         correspond to the elements in indices will be used. Unless you want to perform the calibration steps separately,
         you should not use this method.
         """
+
+        # check if self.feature_list_1 is empty(), if so, work on the raw image points
+        if self.feature_list_1 ==[]:
+            tobject_points_list=[]
+            timage_points_list_1=[]
+            timage_points_list_2=[]
+            self.indices = []
+            for idx in indices:
+                timage_points_list_1.append(self.image_points_list_1[idx])
+                timage_points_list_2.append(self.image_points_list_1[idx])
+                tobject_points_list.append(self.object_points_list[idx])
+            self.image_points_list_1 = timage_points_list_1
+            self.image_points_list_2 = timage_points_list_2
+            self.object_points_list = tobject_points_list
+            self.indices = list(range(len(self.image_points_list_1)))
+
+
+            return
+
+
         self.indices = []
         self.object_points_list = []
         self.image_points_list_1 = []
