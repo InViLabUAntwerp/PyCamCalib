@@ -162,6 +162,8 @@ class CameraCalibrator:
          Unless you want to perform the calibration steps separately, you should not use this method.
         """
         self.sensor_dimensions = sensor_dimensions
+        # flip the sensor dimensions
+        #sensor_dimensions = np.flip(sensor_dimensions)
 
         if self.camera_parameters is None:
             cameraMatrix = None
@@ -181,6 +183,8 @@ class CameraCalibrator:
         self.extrinsics_std = extrinsics_std
 
         # Save parameters in CalibrationParameters object
+        if self.camera_parameters is None:
+            self.camera_parameters = CameraParameters()
         self.camera_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs,
                                                      intrinsics_std, self.sensor_dimensions)
 
@@ -414,6 +418,7 @@ class StereoCalibrator:
         self.space_between_features = space_between_features
         self.object_points_list = objectlist
         self._logger.info("Performing calibration")
+
         self.stereo_parameters = self.opencv_calibration(parameters_1, parameters_2)
 
         return self.stereo_parameters
@@ -491,7 +496,7 @@ class StereoCalibrator:
             self.indices = []
             for idx in indices:
                 timage_points_list_1.append(self.image_points_list_1[idx])
-                timage_points_list_2.append(self.image_points_list_1[idx])
+                timage_points_list_2.append(self.image_points_list_2[idx])
                 tobject_points_list.append(self.object_points_list[idx])
             self.image_points_list_1 = timage_points_list_1
             self.image_points_list_2 = timage_points_list_2
@@ -528,6 +533,8 @@ class StereoCalibrator:
 
         Unless you want to perform the calibration steps separately, you should not use this method.
         """
+        # print the size of self.image_points_list_1
+        print(len(self.image_points_list_1))
         self.rms_reproj_error, _, _, _, _, R, T, E, F, self.r_vecs, self.t_vecs, self.per_view_err \
             = cv2.stereoCalibrateExtended(self.object_points_list,
                                           self.image_points_list_1,
@@ -540,6 +547,101 @@ class StereoCalibrator:
                                           None,
                                           None,
                                           flags=cv2.CALIB_FIX_INTRINSIC)
+
+        # Initialize a list to store the errors
+        errors_in_mm = []
+
+        # Initialize a list to store the errors
+        errors_in_mm = []
+
+        # Lists to store all points for plotting
+        all_points_cam1 = []
+        all_points_cam2 = []
+        # Iterate over the object points and their corresponding image points
+        for obj_points, img_points_1, img_points_2 in zip(self.object_points_list, self.image_points_list_1,
+                                                          self.image_points_list_2):
+            # Estimate the position of the object points in the first camera coordinate system using PnP
+            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, parameters_1.get_intrinsics_matrix_opencv(),
+                                             parameters_1.get_distortion_coeffs_opencv())
+
+            # Estimate the position of the object points in the second camera coordinate system using PnP
+            _, rvec_2, tvec_2 = cv2.solvePnP(obj_points, img_points_2, parameters_2.get_intrinsics_matrix_opencv(),
+                                             parameters_2.get_distortion_coeffs_opencv())
+
+            # Convert rotation vectors to rotation matrices
+            R_1, _ = cv2.Rodrigues(rvec_1)
+            R_2, _ = cv2.Rodrigues(rvec_2)
+
+            # Convert object points to homogeneous coordinates
+            obj_points_homogeneous = np.hstack((obj_points, np.ones((obj_points.shape[0], 1))))
+
+            # Create the transformation matrix for the first camera
+            T_1 = np.eye(4)
+            T_1[:3, :3] = R_1
+            T_1[:3, 3] = tvec_1.flatten()
+
+            # Transform the object points from the object coordinate system to the first camera coordinate system
+            points_cam1_homogeneous = (T_1 @ obj_points_homogeneous.T).T
+            points_cam1 = points_cam1_homogeneous[:, :3] / points_cam1_homogeneous[:, 3][:, np.newaxis]
+
+            # Create the transformation matrix for the second camera relative to the first camera
+            T_2 = np.eye(4)
+            T_2[:3, :3] = R_2
+            T_2[:3, 3] = tvec_2.flatten()
+
+            # Transform the object points from the object coordinate system to the second camera coordinate system
+            points_cam2_homogeneous = (T_2 @ obj_points_homogeneous.T).T
+            points_cam2 = points_cam2_homogeneous[:, :3] / points_cam2_homogeneous[:, 3][:, np.newaxis]
+
+            # Assuming R and T are already defined
+            R_inv = R.T  # Transpose of the rotation matrix
+            T_inv = -R_inv @ T  # Inverse translation
+
+            # Create the transformation matrix for the second camera relative to the first camera
+            T_3 = np.eye(4)
+            T_3[:3, :3] = R_inv
+            T_3[:3, 3] = T_inv.flatten()
+
+
+            # Transform the points from the second camera coordinate system to the first camera coordinate system
+            points_cam2_homogeneous = (T_3 @ points_cam2_homogeneous.T ).T
+            points_cam2_in_cam1 = points_cam2_homogeneous[:, :3] / points_cam2_homogeneous[:, 3][:, np.newaxis]
+
+            error_board=[]
+            # Calculate the Euclidean distance between the transformed points and the actual object points
+            for actual_point, transformed_point in zip(points_cam1, points_cam2_in_cam1):
+                error = np.linalg.norm(actual_point - transformed_point)
+                error_board.append(error)
+            error = np.mean(error_board)
+            errors_in_mm.append(error)
+
+            # Store points for plotting
+            all_points_cam1.append(points_cam1)
+            all_points_cam2.append(points_cam2_in_cam1)
+
+        # Calculate the mean error in millimeters
+        mean_error_in_mm = np.mean(errors_in_mm)
+        self.errors_in_mm = errors_in_mm
+
+        print(f"Mean Error in millimeters: {mean_error_in_mm}")
+
+        # Plot all checkerboards in 3D
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        for points_cam1, points_cam2 in zip(all_points_cam1, all_points_cam2):
+            ax.scatter(points_cam1[:, 0], points_cam1[:, 1], points_cam1[:, 2], color='red', marker='o', s=50,
+                       label='Camera 1' if not ax.get_legend_handles_labels()[0] else "")
+            ax.scatter(points_cam2[:, 0], points_cam2[:, 1], points_cam2[:, 2], color='blue', marker='x', s=50,
+                       label='Camera 2' if not ax.get_legend_handles_labels()[0] else "")
+
+        ax.set_title('Checkerboards Detected by Both Cameras in 3D')
+        ax.set_xlabel('X Coordinate')
+        ax.set_ylabel('Y Coordinate')
+        ax.set_zlabel('Z Coordinate')
+        ax.legend()
+        plt.show()
+
 
         calibration_parameters = StereoParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, R, T, E, F)
