@@ -9,3 +9,4 @@ sphinx-rtd-theme
 sphinx-autodoc-typehints
 pipreqs
 build
+rx
