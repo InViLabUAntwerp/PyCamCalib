@@ -826,10 +826,12 @@ class StereoParameters:
         if not os.path.exists(directory_path+"/camera_calibration"):
             os.makedirs(directory_path+"/camera_calibration")
         self.camera_parameters_1.save_parameters(directory_path+"/camera_calibration/camera_1_parameters.h5")
-
         self.camera_parameters_1.save_parameters_to_json(directory_path+"/camera_calibration/camera_1_parameters.json")
         self.camera_parameters_2.save_parameters(directory_path+"/camera_calibration/camera_2_parameters.h5")
         self.camera_parameters_2.save_parameters_to_json(directory_path+"/camera_calibration/camera_2_parameters.json")
+        self.camera_parameters_1.save_parameters(full_save_path, "camera_calibration/camera_1_parameters")
+        self.camera_parameters_2.save_parameters(full_save_path, "camera_calibration/camera_2_parameters")
+
         H = TransformationMatrix()
         H.T = self.T
         H.R = self.R
