@@ -16,7 +16,7 @@ camera_calibration_gui = "PyCamCalib.camera_calibration_gui.__main__:launch_gui"
 
 [project]
 name = "PyCamCalib"
-version = "2.0.1"
+version = "2.0.0"
 authors = [
   { name="Michaël Hillen", email="michael.hillen@uantwerpen.be" },
 ]
