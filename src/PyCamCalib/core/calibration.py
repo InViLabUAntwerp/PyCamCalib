@@ -882,14 +882,19 @@ class StereoParameters:
                 self.T = file["camera_calibration/stereo_parameters/T"][()]
                 self.E = file["camera_calibration/stereo_parameters/E"][()]
                 self.F = file["camera_calibration/stereo_parameters/F"][()]
-                self.H = TransformationMatrix()
-                group = file["camera_calibration/stereo_parameters/TransformationMatrix"]
-                self.H = group["H"][()]
-                self.H.info = group.attrs["info"]
-                self.H.units = group.attrs["units"]
+                self.H = self.load_homogeneous(TransformationMatrix,
+                    file["camera_calibration/stereo_parameters/TransformationMatrix"])
 
             except KeyError as e:
                 raise KeyError("File does not contain stereo calibration parameters.") from e
+
+    @staticmethod
+    def load_homogeneous(self, cls, group):
+        obj = cls()
+        obj.H = group["H"][()]
+        obj.info = group.attrs.get("info", ["unknown", "unknown"])
+        obj.units = group.attrs.get("units", "mm")
+        return obj
 
     def calculate_undistort_rectify_maps(self, alpha: float = 0, fixed_point_maps: bool = False) -> None:
         """Calculate rectification transforms and maps necessary for remapping.
