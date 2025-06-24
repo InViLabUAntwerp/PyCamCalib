@@ -9,3 +9,6 @@ sphinx-rtd-theme
 sphinx-autodoc-typehints
 pipreqs
 build
+rx
+GPy
+https://github.com/InViLabUAntwerp/core_toolbox_python/releases/download/v0.1.0/ctp-0.1.0-py3-none-any.whl
