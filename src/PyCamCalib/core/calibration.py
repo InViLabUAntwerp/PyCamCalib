@@ -860,7 +860,7 @@ class StereoParameters:
                 group = file["camera_calibration/stereo_parameters/TransformationMatrix"]
                 if "H" in group:
                     del group["H"]
-                group.create_dataset("H", data=self.H.H)
+                group.create_dataset("H", data=self.H.tolist())
                 group.attrs.modify("info", self.H.info)
                 group.attrs.modify("units", self.H.units)
 
@@ -882,6 +882,12 @@ class StereoParameters:
                 self.T = file["camera_calibration/stereo_parameters/T"][()]
                 self.E = file["camera_calibration/stereo_parameters/E"][()]
                 self.F = file["camera_calibration/stereo_parameters/F"][()]
+                self.H = TransformationMatrix()
+                group = file["camera_calibration/stereo_parameters/TransformationMatrix"]
+                self.H = group["H"][()]
+                self.H.info = group.attrs["info"]
+                self.H.units = group.attrs["units"]
+
             except KeyError as e:
                 raise KeyError("File does not contain stereo calibration parameters.") from e
 
