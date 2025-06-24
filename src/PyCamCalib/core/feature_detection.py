@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from PyCBD.pipelines import CBDPipeline
-from PyCamCalib.core.exceptions import ImageError
+from .exceptions import ImageError
 import numpy as np
 import numpy.typing as npt
 from typing import Tuple, Optional

@@ -8,11 +8,8 @@ import matplotlib.pyplot as plt
 import json
 import os
 import copy
-from core_toolbox_python.Plucker.Line import Line
-from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
-from PyCamCalib.core.exceptions import CalibrationError
-from PyCamCalib.core.feature_detection import FeatureDetector
-import logging
+from CTP.Plucker.Line import Line
+from CTP.Transformation.TransformationMatrix import TransformationMatrix
 import matplotlib
 
 matplotlib.use('TkAgg')

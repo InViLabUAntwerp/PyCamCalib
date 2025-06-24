@@ -4,7 +4,7 @@ Some scripts need to be executed in order.
 """
 
 #%% Imports
-from PyCamCalib.core.calibration import CameraCalibrator
+from src.PyCamCalib.core.calibration import CameraCalibrator
 import glob
 import cv2
 import numpy as np
