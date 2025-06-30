@@ -847,7 +847,7 @@ class StereoParameters:
                 file.create_dataset("camera_calibration/stereo_parameters/E", data=self.E)
                 file.create_dataset("camera_calibration/stereo_parameters/F", data=self.F)
                 group = file.create_group("camera_calibration/stereo_parameters/TransformationMatrix")
-                group.create_dataset("H", data=self.H.tolist())
+                group.create_dataset("H", data=self.H.H.tolist())
                 group.attrs["info"] = self.H.info
                 group.attrs["units"] = self.H.units
 
@@ -860,9 +860,10 @@ class StereoParameters:
                 group = file["camera_calibration/stereo_parameters/TransformationMatrix"]
                 if "H" in group:
                     del group["H"]
-                group.create_dataset("H", data=self.H.tolist())
-                group.attrs.modify("info", self.H.info)
-                group.attrs.modify("units", self.H.units)
+                group.create_dataset("H", data=self.H.H.tolist())
+                group.attrs["info"]  = self.H.info
+                group.attrs["units"] = self.H.units
+
 
 
     def load_parameters(self, full_save_path: str) -> None:
@@ -889,9 +890,9 @@ class StereoParameters:
                 raise KeyError("File does not contain stereo calibration parameters.") from e
 
     @staticmethod
-    def load_homogeneous(self, cls, group):
+    def load_homogeneous(cls, group):
         obj = cls()
-        obj.H = group["H"][()]
+        obj.H = group["H"][()]  # this is now a (4,4) array
         obj.info = group.attrs.get("info", ["unknown", "unknown"])
         obj.units = group.attrs.get("units", "mm")
         return obj
