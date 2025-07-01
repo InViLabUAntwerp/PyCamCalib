@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import json
 import os
 import copy
-from CTP.Plucker.Line import Line
-from CTP.Transformation.TransformationMatrix import TransformationMatrix
+from CTPv.Plucker.Line import Line
+from CTPv.Transformation.TransformationMatrix import TransformationMatrix
 import matplotlib
 
 matplotlib.use('TkAgg')
