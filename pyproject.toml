@@ -31,11 +31,11 @@ classifiers = [
 dependencies = [
   'h5py',
   'importlib_resources',
-  'matplotlib >= 3.5.3',
-  'numpy >= 1.20.0',
+  'matplotlib',
+  'numpy',
   'opencv-python',
   'pyqtgraph',
-  'PySide6 <= 6.3.2',
+  'PySide6',
 ]
 
 [project.urls]
