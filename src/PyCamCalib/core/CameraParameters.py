@@ -358,7 +358,7 @@ class CameraParameters:
             self.c[0] = self.sensor_dimensions[0] / 2
             self.c[1] = self.sensor_dimensions[1] / 2
 
-        def generate_rays(self, schaal: float = 2.0, subsampling: float = 1.0) -> Line:
+    def generate_rays(self, schaal: float = 2.0, subsampling: float = 1.0) -> Line:
         """
         Generate rays for every pixel in the image based on the intrinsic matrix,
         with optional sub-pixel resolution control.
