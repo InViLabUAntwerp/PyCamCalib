@@ -264,6 +264,46 @@ class CameraCalibrator:
         plt.legend([bars, line], ['Image', 'RMS'], ncols=2)
         plt.show()
 
+    def calibrate_world_coordinate_system(self,image,space_between_features: float,                  board_size: Optional[Tuple[int, int]] = None,
+                  marker: Optional[Tuple[int, int]] = None,
+                  absolute: bool = False, **kwargs) -> TransformationMatrix:
+
+        image_array = image
+        sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
+        self.construct_feature_list(image_array, space_between_features, board_size, marker, **kwargs)
+        self.construct_points_lists([])
+
+        for obj_points, img_points_1 in zip(self.object_points_list, self.image_points_list,):
+            # Estimate the position of the object points in the first camera coordinate system using PnP
+            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, self.camera_parameters.get_intrinsics_matrix_opencv(),
+                                             self.camera_parameters.get_distortion_coeffs_opencv())
+
+            # --- 3. CALCULATE RMS ERROR ---
+
+            # Re-project the 3D points to the 2D image plane
+            reprojected_points, _ = cv2.projectPoints(obj_points, rvec_1, tvec_1, self.camera_parameters.get_intrinsics_matrix_opencv(), self.camera_parameters.get_distortion_coeffs_opencv())
+
+            # Reshape reprojected_points to match the shape of img_points_1 for calculation
+            reprojected_points = reprojected_points.reshape(-1, 2)
+
+            # Calculate the absolute error between the original and reprojected points
+            # cv2.norm calculates the L2 norm (Euclidean distance) between the two sets of points
+            # We then divide by the square root of the number of points to get the RMS
+            error = cv2.norm(img_points_1, reprojected_points, cv2.NORM_L2) / np.sqrt(len(reprojected_points))
+
+            # convert rvec_1 and tvec_ to homogenous matrix
+            R, _ = cv2.Rodrigues(rvec_1)
+            H = np.hstack((R, tvec_1))
+            H = np.vstack((H, [0, 0, 0, 1]))
+            #convert error to string
+
+
+
+            return H,error
+
+
+
+
     def save_checkerboard_detection_to_images(self,image_array,path):
         if not os.path.exists(path):
             os.makedirs(path)
