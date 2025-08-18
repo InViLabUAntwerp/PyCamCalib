@@ -1,19 +1,20 @@
 """Module that contains all code for camera calibration."""
 
 from __future__ import annotations
-import numpy.typing as npt
-from typing import Tuple, Optional
-import cv2
-import numpy as np
-import h5py
-import matplotlib.pyplot as plt
-from rx import empty
-
-from PyCamCalib.core.exceptions import CalibrationError
-from PyCamCalib.core.feature_detection import FeatureDetector
-import logging
 import os
-from PyCamCalib.core.CameraParameters import *
+import cv2
+import h5py
+import logging
+import numpy as np
+import numpy.typing as npt
+from rx import empty
+import matplotlib.pyplot as plt
+from typing import Tuple, Optional
+
+from .exceptions import CalibrationError
+from .feature_detection import FeatureDetector
+from CTPv.Transformation.TransformationMatrix import TransformationMatrix
+from .CameraParameters import CameraParameters
 
 class CameraCalibrator:
     """Object used to calibrate a camera.
@@ -872,12 +873,12 @@ class StereoParameters:
         self.camera_parameters_1.save_parameters(full_save_path, "camera_calibration/camera_1_parameters")
         self.camera_parameters_2.save_parameters(full_save_path, "camera_calibration/camera_2_parameters")
 
-        H = TransformationMatrix()
-        H.T = self.T
-        H.R = self.R
-        H.units = self.units
-        H.info = self.info
-        H.save_to_json(os.path.splitext(full_save_path)[0]+ '_TransformationMatrix.json')
+        self.H = TransformationMatrix()
+        self.H.T = self.T
+        self.H.R = self.R
+        self.H.units = self.units
+        self.H.info = self.info
+        self.H.save_to_json(os.path.splitext(full_save_path)[0]+ '_TransformationMatrix.json')
         with h5py.File(full_save_path, "a") as file:
             try:
                 file.create_dataset("camera_calibration/stereo_parameters/rms_reproj_error", data=self.rms_reproj_error)
@@ -885,6 +886,10 @@ class StereoParameters:
                 file.create_dataset("camera_calibration/stereo_parameters/T", data=self.T)
                 file.create_dataset("camera_calibration/stereo_parameters/E", data=self.E)
                 file.create_dataset("camera_calibration/stereo_parameters/F", data=self.F)
+                group = file.create_group("camera_calibration/stereo_parameters/TransformationMatrix")
+                group.create_dataset("H", data=self.H.H.tolist())
+                group.attrs["info"] = self.H.info
+                group.attrs["units"] = self.H.units
 
             except ValueError:
                 file["camera_calibration/stereo_parameters/rms_reproj_error"][()] = self.rms_reproj_error
@@ -892,6 +897,14 @@ class StereoParameters:
                 file["camera_calibration/stereo_parameters/T"][()] = self.T
                 file["camera_calibration/stereo_parameters/E"][()] = self.E
                 file["camera_calibration/stereo_parameters/F"][()] = self.F
+                group = file["camera_calibration/stereo_parameters/TransformationMatrix"]
+                if "H" in group:
+                    del group["H"]
+                group.create_dataset("H", data=self.H.H.tolist())
+                group.attrs["info"]  = self.H.info
+                group.attrs["units"] = self.H.units
+
+
 
     def load_parameters(self, full_save_path: str) -> None:
         """Load calibration parameters from .h5 file into object.
@@ -910,8 +923,19 @@ class StereoParameters:
                 self.T = file["camera_calibration/stereo_parameters/T"][()]
                 self.E = file["camera_calibration/stereo_parameters/E"][()]
                 self.F = file["camera_calibration/stereo_parameters/F"][()]
+                self.H = self.load_homogeneous(TransformationMatrix,
+                    file["camera_calibration/stereo_parameters/TransformationMatrix"])
+
             except KeyError as e:
                 raise KeyError("File does not contain stereo calibration parameters.") from e
+
+    @staticmethod
+    def load_homogeneous(cls, group):
+        obj = cls()
+        obj.H = group["H"][()]  # this is now a (4,4) array
+        obj.info = group.attrs.get("info", ["unknown", "unknown"])
+        obj.units = group.attrs.get("units", "mm")
+        return obj
 
     def calculate_undistort_rectify_maps(self, alpha: float = 0, fixed_point_maps: bool = False) -> None:
         """Calculate rectification transforms and maps necessary for remapping.

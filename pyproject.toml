@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=74.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -22,7 +22,7 @@ authors = [
 ]
 description = "PyCamCalib: Python library for camera and stereo calibration."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -31,11 +31,11 @@ classifiers = [
 dependencies = [
   'h5py',
   'importlib_resources',
-  'matplotlib >= 3.5.3',
-  'numpy >= 1.20.0',
+  'matplotlib',
+  'numpy',
   'opencv-python',
   'pyqtgraph',
-  'PySide6 <= 6.3.2',
+  'PySide6',
 ]
 
 [project.urls]

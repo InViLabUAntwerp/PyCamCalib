@@ -8,11 +8,8 @@ import matplotlib.pyplot as plt
 import json
 import os
 import copy
-from core_toolbox_python.Plucker.Line import Line
-from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
-from PyCamCalib.core.exceptions import CalibrationError
-from PyCamCalib.core.feature_detection import FeatureDetector
-import logging
+from CTPv.Plucker.Line import Line
+from CTPv.Transformation.TransformationMatrix import TransformationMatrix
 import matplotlib
 
 matplotlib.use('TkAgg')
@@ -361,13 +358,32 @@ class CameraParameters:
             self.c[0] = self.sensor_dimensions[0] / 2
             self.c[1] = self.sensor_dimensions[1] / 2
 
-    def generate_rays(self) -> Line:
-        """Generate rays for every pixel in the image based on the intrinsic matrix."""
-        schaal = 2.0  # Just for visualization purposes
-        x_vals, y_vals = np.meshgrid(np.arange(self.sensor_dimensions[0]), np.arange(self.sensor_dimensions[1]))
+    def generate_rays(self, schaal: float = 2.0, subsampling: float = 1.0) -> Line:
+        """
+        Generate rays for every pixel in the image based on the intrinsic matrix,
+        with optional sub-pixel resolution control.
 
-        # Check if there is no distortion
+        Parameters:
+        - schaal: float (default=2.0), scaling factor for visualization.
+        - subsampling: float (default=1.0), factor to control ray density:
+            * < 1.0 increases ray count (super-sampling),
+            * > 1.0 decreases ray count (downsampling).
+        """
+        if subsampling <= 0:
+            raise ValueError("Subsampling must be greater than 0")
 
+        # Calculate new resolution based on subsampling factor
+        height, width = self.sensor_dimensions[1], self.sensor_dimensions[0]
+        new_width = int(width / subsampling)
+        new_height = int(height / subsampling)
+
+        # Create a grid of pixel coordinates based on the new resolution
+        x_vals, y_vals = np.meshgrid(
+            np.linspace(0, width - 1, new_width),
+            np.linspace(0, height - 1, new_height)
+        )
+
+        # Apply intrinsic matrix correction with or without distortion
         if self.radial_dist_coeffs[0] == 0:
             x_vals = (x_vals - self.c[0]) / self.f[0] * schaal
             y_vals = (y_vals - self.c[1]) / self.f[1] * schaal
@@ -376,21 +392,24 @@ class CameraParameters:
             x_norm = (x_vals - self.c[0]) / self.f[0]
             y_norm = (y_vals - self.c[1]) / self.f[1]
             r2 = x_norm ** 2 + y_norm ** 2
-            radial_factor = 1 + self.radial_dist_coeffs[0] * r2 + self.radial_dist_coeffs[1] * r2 ** 2 + self.radial_dist_coeffs[2] * r2 ** 3
+            radial_factor = 1 + self.radial_dist_coeffs[0] * r2 + \
+                            self.radial_dist_coeffs[1] * r2 ** 2 + \
+                            self.radial_dist_coeffs[2] * r2 ** 3
             x_vals = x_norm * radial_factor * schaal
             y_vals = y_norm * radial_factor * schaal
             z_vals = np.ones_like(x_vals) * schaal
 
         Ps = np.stack([x_vals, y_vals, z_vals], axis=-1)
         Pf = np.zeros_like(Ps)
-        Pf[..., 2] = 0  # Set Z component to zero
+        Pf[..., 2] = 0  # Rays originate in the image plane (Z = 0)
 
         directions = Ps - Pf
         rays = Line()
-        rays.Ps = Pf.reshape(Pf.shape[0] * Pf.shape[1], 3)
-        rays.V = directions.reshape(directions.shape[0] * directions.shape[1], 3)
+        rays.Ps = Pf.reshape(-1, 3)
+        rays.V = directions.reshape(-1, 3)
 
         return rays
+
 
     def save_parameters_to_json(self, full_save_path: str) -> None:
         """Save calibration parameters to a JSON file.
