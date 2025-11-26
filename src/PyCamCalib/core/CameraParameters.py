@@ -360,48 +360,67 @@ class CameraParameters:
 
     def generate_rays(self, schaal: float = 2.0, subsampling: float = 1.0) -> Line:
         """
-        Generate rays for every pixel in the image based on the intrinsic matrix,
-        with optional sub-pixel resolution control.
-
-        Parameters:
-        - schaal: float (default=2.0), scaling factor for visualization.
-        - subsampling: float (default=1.0), factor to control ray density:
-            * < 1.0 increases ray count (super-sampling),
-            * > 1.0 decreases ray count (downsampling).
+        Generate rays for every pixel in a DISTORTED image.
+        Rays are corrected for distortion so triangulation works correctly.
         """
         if subsampling <= 0:
             raise ValueError("Subsampling must be greater than 0")
 
-        # Calculate new resolution based on subsampling factor
         height, width = self.sensor_dimensions[1], self.sensor_dimensions[0]
         new_width = int(width / subsampling)
         new_height = int(height / subsampling)
 
-        # Create a grid of pixel coordinates based on the new resolution
+        # Pixel coordinates in the DISTORTED image
         x_vals, y_vals = np.meshgrid(
             np.linspace(0, width - 1, new_width),
             np.linspace(0, height - 1, new_height)
         )
 
-        # Apply intrinsic matrix correction with or without distortion
-        if self.radial_dist_coeffs[0] == 0:
-            x_vals = (x_vals - self.c[0]) / self.f[0] * schaal
-            y_vals = (y_vals - self.c[1]) / self.f[1] * schaal
-            z_vals = np.ones_like(x_vals) * schaal
+        # Normalize to get distorted normalized coordinates
+        x_d = (x_vals - self.c[0]) / self.f[0]
+        y_d = (y_vals - self.c[1]) / self.f[1]
+
+        # Apply INVERSE distortion if distortion exists
+        if self.radial_dist_coeffs[0] == 0 and np.allclose(self.tangential_dist_coeffs, 0):
+            # No distortion case
+            x_u = x_d
+            y_u = y_d
         else:
-            x_norm = (x_vals - self.c[0]) / self.f[0]
-            y_norm = (y_vals - self.c[1]) / self.f[1]
-            r2 = x_norm ** 2 + y_norm ** 2
-            radial_factor = 1 + self.radial_dist_coeffs[0] * r2 + \
-                            self.radial_dist_coeffs[1] * r2 ** 2 + \
-                            self.radial_dist_coeffs[2] * r2 ** 3
-            x_vals = x_norm * radial_factor * schaal
-            y_vals = y_norm * radial_factor * schaal
-            z_vals = np.ones_like(x_vals) * schaal
+            # INVERSE distortion: distorted → undistorted
+            # Use iterative method to solve for undistorted coordinates
+            x_u = x_d.copy()
+            y_u = y_d.copy()
+
+            k1, k2, k3 = self.radial_dist_coeffs
+            p1, p2 = self.tangential_dist_coeffs
+
+            # Newton-Raphson iterations to invert the distortion model
+            for _ in range(10):  # Usually converges in 5-10 iterations
+                r2 = x_u ** 2 + y_u ** 2
+                r4 = r2 ** 2
+                r6 = r2 ** 3
+
+                # Forward distortion model
+                radial = 1 + k1 * r2 + k2 * r4 + k3 * r6
+                dx = 2 * p1 * x_u * y_u + p2 * (r2 + 2 * x_u ** 2)
+                dy = p1 * (r2 + 2 * y_u ** 2) + 2 * p2 * x_u * y_u
+
+                x_distorted = x_u * radial + dx
+                y_distorted = y_u * radial + dy
+
+                # Correction step: move estimate toward solution
+                x_u += x_d - x_distorted
+                y_u += y_d - y_distorted
+
+        # Now x_u, y_u are the UNDISTORTED normalized coordinates
+        # These represent the true ray directions
+        x_vals = x_u * schaal
+        y_vals = y_u * schaal
+        z_vals = np.ones_like(x_vals) * schaal
 
         Ps = np.stack([x_vals, y_vals, z_vals], axis=-1)
         Pf = np.zeros_like(Ps)
-        Pf[..., 2] = 0  # Rays originate in the image plane (Z = 0)
+        Pf[..., 2] = 0
 
         directions = Ps - Pf
         rays = Line()
