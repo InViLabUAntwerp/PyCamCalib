@@ -720,7 +720,7 @@ class StereoCalibrator:
     def plot_and_filter_reproj_error(self) -> list:
         """Plot mean re-projection error and re-projection error for each calibration image."""
         indices = list(map(str, self.indices))
-        cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 0]}
+        cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 1]}
 
         fig, ax = plt.subplots()
         ax.axhline(self.rms_reproj_error, color='g', linestyle='--', label='RMS')
