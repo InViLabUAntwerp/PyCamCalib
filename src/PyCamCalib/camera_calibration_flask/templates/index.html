@@ -38,8 +38,20 @@
                         <label class="form-check-label text-dark" for="absoluteCheck">Use Absolute Positions</label>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label text-dark fw-bold">Board Corners (Cols &times; Rows) <span class="fw-normal text-muted">- Optional</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control border-secondary" id="boardWidth" placeholder="Auto" min="3">
+                            <span class="input-group-text border-secondary">&times;</span>
+                            <input type="number" class="form-control border-secondary" id="boardHeight" placeholder="Auto" min="3">
+                        </div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label text-dark fw-bold">Pixel Size (&mu;m) - Optional</label>
                         <input type="number" class="form-control border-secondary" id="pixelSize" step="0.01" placeholder="e.g. 3.45">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-dark fw-bold">Info / Name (Optional)</label>
+                        <input type="text" class="form-control border-secondary" id="infoInput" placeholder="e.g. Camera 1">
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-dark fw-bold">Upload Images</label>
@@ -112,7 +124,7 @@
                 <div class="card-body border">
 
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="fw-bold" style="color: #002e65;" id="viewerName">Index: N/A | Image: N/A</span>
+                        <span class="fw-bold text-truncate me-2" style="color: #002e65; max-width: 35%;" id="viewerName">Index: N/A | Image: N/A</span>
 
                         <div class="btn-group" role="group">
                             <button class="btn btn-sm btn-outline-secondary" onclick="detZoom.zoom(0.2)">Zoom In (+)</button>
@@ -120,7 +132,10 @@
                             <button class="btn btn-sm btn-outline-danger" onclick="detZoom.reset()">Reset</button>
                         </div>
 
-                        <span class="badge bg-primary fs-6" id="viewerError">Error: N/A</span>
+                        <div class="ms-2">
+                            <span class="badge bg-info text-dark fs-6 border border-info" id="viewerShape">Shape: N/A</span>
+                            <span class="badge bg-primary fs-6" id="viewerError">Error: N/A</span>
+                        </div>
                     </div>
 
                     <div class="text-center rounded mb-3 overflow-hidden image-viewer-container" id="imageContainer" style="position: relative; height: 500px; display: flex; align-items: center; justify-content: center; cursor: grab;">
@@ -132,6 +147,16 @@
                         <input type="range" class="form-range flex-grow-1" id="imageSlider" min="0" max="0" value="0" disabled onchange="fetchDetectionImage(this.value)">
                         <span id="lblMaxIdx" class="fw-bold text-muted">0</span>
                     </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-dark text-white p-2">
+                    <span class="ps-2 fw-bold">3D Checkerboard Positions</span>
+                </div>
+                <div class="card-body border">
+                    <p class="text-muted small mb-1">Interactive 3D view of the camera (origin) and calibration boards.</p>
+                    <div id="extrinsicsPlot" style="width:100%; height:400px;"></div>
                 </div>
             </div>
 
@@ -226,6 +251,16 @@
         if (pixelSizeInput) {
             formData.append('pixel_size', pixelSizeInput);
         }
+        const infoInput = document.getElementById('infoInput').value;
+        if (infoInput) {
+            formData.append('info', infoInput);
+        }
+        const bw = document.getElementById('boardWidth').value;
+        const bh = document.getElementById('boardHeight').value;
+        if (bw && bh) {
+            formData.append('board_width', bw);
+            formData.append('board_height', bh);
+        }
 
         try {
             const res = await fetch(`/api/calibrate/initial`, { method: 'POST', body: formData });
@@ -261,7 +296,10 @@
         try {
             const res = await fetch(`/api/calibrate/recalculate`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ excluded_indices: excludedIndices })
+                body: JSON.stringify({ 
+                    excluded_indices: excludedIndices,
+                    info: document.getElementById('infoInput').value
+                })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Server error");
@@ -280,6 +318,7 @@
 
         updateTable(data.intrinsics, data.distortion);
         renderRMSPlot(data.plot_data);
+        renderExtrinsicsPlot(data.plot_data);
 
         if (data.plot_data.distortion_map) {
             const dImg = document.getElementById('distImg');
@@ -310,6 +349,25 @@
         }
         if (intrinsics.fov_deg) {
             tbody.innerHTML += `<tr><td class="fw-bold text-primary">FOV (degrees)</td><td colspan="2" class="text-primary">X: ${intrinsics.fov_deg[0].toFixed(2)}&deg;, Y: ${intrinsics.fov_deg[1].toFixed(2)}&deg;</td></tr>`;
+        }
+    }
+
+    function updatePlotsColors() {
+        if (!lastCalibrationData) return;
+        
+        const currentColors = lastCalibrationData.plot_data.indices.map(idx => 
+            pendingRemoval.includes(idx) ? uaRed : uaBlue
+        );
+        Plotly.restyle('reprojPlot', 'marker.color', [currentColors]);
+        
+        if (lastCalibrationData.plot_data.extrinsics) {
+            const extrinsicsColors = lastCalibrationData.plot_data.extrinsics.map(ext => 
+                pendingRemoval.includes(ext.index) ? uaRed : uaBlue
+            );
+            const traceIndices = Array.from({length: extrinsicsColors.length}, (_, i) => i + 1);
+            if (traceIndices.length > 0) {
+                Plotly.restyle('extrinsicsPlot', 'marker.color', extrinsicsColors, traceIndices);
+            }
         }
     }
 
@@ -345,13 +403,81 @@
             const pendingIndex = pendingRemoval.indexOf(imageIndex);
 
             if (pendingIndex === -1) {
-                // Change to UAntwerpen Red when clicked
-                pendingRemoval.push(imageIndex); currentColors[pointIndex] = uaRed;
+                pendingRemoval.push(imageIndex);
             } else {
-                // Revert to UAntwerpen Blue
-                pendingRemoval.splice(pendingIndex, 1); currentColors[pointIndex] = uaBlue;
+                pendingRemoval.splice(pendingIndex, 1);
             }
-            Plotly.restyle('reprojPlot', 'marker.color', [currentColors]);
+            updatePlotsColors();
+        });
+    }
+
+    function renderExtrinsicsPlot(plotData) {
+        if (!plotData.extrinsics || plotData.extrinsics.length === 0) {
+            document.getElementById('extrinsicsPlot').innerHTML = '<p class="text-muted text-center mt-5">No 3D data available</p>';
+            return;
+        }
+        
+        const data = [];
+        
+        data.push({
+            x: [0], y: [0], z: [0],
+            mode: 'markers+text',
+            text: ['Camera'],
+            textposition: 'bottom center',
+            marker: { size: 8, color: '#000000', symbol: 'diamond' },
+            name: 'Camera',
+            type: 'scatter3d',
+            hoverinfo: 'name'
+        });
+
+        plotData.extrinsics.forEach(ext => {
+            const x = ext.points.map(p => p[0]);
+            const y = ext.points.map(p => p[1]);
+            const z = ext.points.map(p => p[2]);
+            
+            const isRemoved = pendingRemoval.includes(ext.index);
+            const color = isRemoved ? uaRed : uaBlue;
+            
+            data.push({
+                x: x, y: y, z: z,
+                mode: 'markers',
+                marker: { size: 3, color: color },
+                name: `Image ${ext.index}`,
+                type: 'scatter3d',
+                hoverinfo: 'name'
+            });
+        });
+
+        const layout = {
+            margin: { t: 0, b: 0, l: 0, r: 0 },
+            scene: {
+                xaxis: { title: 'X' },
+                yaxis: { title: 'Y' },
+                zaxis: { title: 'Z' },
+                aspectmode: 'data'
+            },
+            showlegend: false,
+            plot_bgcolor: "#ffffff",
+            paper_bgcolor: "#ffffff"
+        };
+
+        Plotly.newPlot('extrinsicsPlot', data, layout);
+
+        document.getElementById('extrinsicsPlot').on('plotly_click', function(data) {
+            if (data.points[0].curveNumber === 0) return; // Ignore camera click
+            
+            const traceName = data.points[0].data.name;
+            const match = traceName.match(/Image (\d+)/);
+            if (!match) return;
+            const imageIndex = parseInt(match[1]);
+            
+            const pendingIndex = pendingRemoval.indexOf(imageIndex);
+            if (pendingIndex === -1) {
+                pendingRemoval.push(imageIndex);
+            } else {
+                pendingRemoval.splice(pendingIndex, 1);
+            }
+            updatePlotsColors();
         });
     }
 
@@ -376,6 +502,7 @@
 
             document.getElementById('viewerName').innerText = `Index: ${index} | Image: ${data.name}`;
             document.getElementById('viewerError').innerText = `Error: ${data.error}`;
+            document.getElementById('viewerShape').innerText = `Shape: ${data.shape}`;
             detZoom.reset();
         } catch (error) { console.error("Failed to fetch image:", error); }
     }
@@ -411,10 +538,17 @@
             rms_reproj_error: lastCalibrationData.plot_data.rms,
             sensor_dimensions: lastCalibrationData.sensor_dimensions,
             pixel_size: lastCalibrationData.pixel_size || null,
-            info: null
+            info: lastCalibrationData.info || null
         };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 4));
-        const anchor = document.createElement('a'); anchor.href = dataStr; anchor.download = "calibration_parameters.json";
+        
+        let filename = "calibration_parameters.json";
+        if (lastCalibrationData.info) {
+            const safeInfo = lastCalibrationData.info.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            filename = `calibration_parameters_${safeInfo}.json`;
+        }
+        
+        const anchor = document.createElement('a'); anchor.href = dataStr; anchor.download = filename;
         document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
     }
 
