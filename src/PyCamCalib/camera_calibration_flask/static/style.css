@@ -1,0 +1,74 @@
+:root {
+    --ua-blue: #002e65;
+    --ua-red: #ea2c38;
+    --fti-purple: #b10097;
+    --fti-pastel: #e4c1db;
+}
+
+body {
+    background-color: #ffffff !important;
+}
+
+/* Titles and Text */
+h2 {
+    color: var(--ua-blue);
+    font-weight: bold;
+}
+
+/* Buttons */
+.btn-success {
+    background-color: var(--ua-blue) !important;
+    border-color: var(--ua-blue) !important;
+}
+.btn-success:hover {
+    background-color: #001a3d !important;
+}
+
+.btn-danger {
+    background-color: var(--ua-red) !important;
+    border-color: var(--ua-red) !important;
+}
+.btn-danger:hover {
+    background-color: #b51c27 !important;
+}
+
+.btn-outline-dark {
+    color: var(--fti-purple);
+    border-color: var(--fti-purple);
+}
+.btn-outline-dark:hover {
+    background-color: var(--fti-purple);
+    color: white;
+}
+
+/* Card Headers */
+.card-header.bg-primary {
+    background-color: var(--ua-blue) !important;
+}
+.card-header.bg-secondary {
+    background-color: var(--fti-purple) !important;
+}
+.card-header.bg-dark {
+    background-color: var(--ua-blue) !important;
+}
+
+/* Alerts & Badges */
+.badge.bg-secondary {
+    background-color: var(--fti-pastel) !important;
+    color: var(--ua-blue) !important;
+}
+.badge.bg-success {
+    background-color: var(--ua-blue) !important;
+}
+.badge.bg-danger {
+    background-color: var(--ua-red) !important;
+}
+.badge.bg-primary {
+    background-color: var(--fti-purple) !important;
+}
+
+/* Viewer Containers */
+.image-viewer-container {
+    background-color: #f8f9fa;
+    border: 2px solid var(--fti-pastel);
+}

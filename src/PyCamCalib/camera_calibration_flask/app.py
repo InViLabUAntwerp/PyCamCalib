@@ -27,6 +27,7 @@ class AppState:
         self.image_names = []
         self.image_array = None
         self.absolute = False
+        self.pixel_size_um = None
 
 
 state = AppState()
@@ -91,6 +92,12 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
     m = params.get_intrinsics_matrix_opencv()
     d = params.get_distortion_coeffs_opencv()
 
+    focal_length_mm = None
+    if params.pixel_size is not None:
+        focal_length_mm = [float(params.focal_length_mm[0]), float(params.focal_length_mm[1])]
+        
+    fov_deg = [float(params.PerspectiveAngle[0]), float(params.PerspectiveAngle[1])]
+
     return {
         "status": "success",
         "intrinsics": {
@@ -98,7 +105,9 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
             "fy": [float(params.f[1]), float(params.f_std[1])],
             "cx": [float(params.c[0]), float(params.c_std[0])],
             "cy": [float(params.c[1]), float(params.c_std[1])],
-            "s": [float(params.s), float(params.s_std)]
+            "s": [float(params.s), float(params.s_std)],
+            "focal_length_mm": focal_length_mm,
+            "fov_deg": fov_deg
         },
         "distortion": {
             "k1": [float(params.radial_dist_coeffs[0]), float(params.radial_dist_coeffs_std[0])],
@@ -115,6 +124,8 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
             "distortion_map": calculate_distortion_map(m, d, params.sensor_dimensions)
         },
         "total_images": state.image_array.shape[-1] if state.image_array is not None else 0,
+        "sensor_dimensions": [int(params.sensor_dimensions[0]), int(params.sensor_dimensions[1])],
+        "pixel_size": params.pixel_size,
         "warning": "At least 11 good images are required for an accurate calibration." if len(
             calibrator.indices) < 11 else None
     }
@@ -133,6 +144,12 @@ def calibrate_initial():
     files = request.files.getlist('files')
     checker_size = float(request.form.get('checker_size', 1.0))
     state.absolute = request.form.get('absolute') == 'true'
+    pixel_size_str = request.form.get('pixel_size')
+    if pixel_size_str:
+        try:
+            state.pixel_size_um = float(pixel_size_str)
+        except ValueError:
+            state.pixel_size_um = None
 
     board_size = None
     marker_location = None
@@ -169,6 +186,8 @@ def calibrate_initial():
             return jsonify({"error": "Failed to detect specified feature in every image."}), 400
 
         state.calibration_parameters = state.calibrator.opencv_calibration(sensor_dimensions)
+        if state.pixel_size_um is not None:
+            state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
         return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator))
 
     except Exception as e:
@@ -188,6 +207,8 @@ def calibrate_recalculate():
 
     try:
         state.calibration_parameters = state.calibrator.calibrate_indices(good_indices, state.absolute)
+        if state.pixel_size_um is not None:
+            state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
         return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator))
     except Exception as e:
         return jsonify({"error": f"Calibration error: {str(e)}"}), 500

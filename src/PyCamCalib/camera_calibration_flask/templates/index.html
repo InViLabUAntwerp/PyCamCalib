@@ -8,89 +8,14 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 
-    <style>
-        :root {
-            --ua-blue: #002e65;
-            --ua-red: #ea2c38;
-            --fti-purple: #b10097;
-            --fti-pastel: #e4c1db;
-        }
-
-        body {
-            background-color: #ffffff !important;
-        }
-
-        /* Titles and Text */
-        h2 {
-            color: var(--ua-blue);
-            font-weight: bold;
-        }
-
-        /* Buttons */
-        .btn-success {
-            background-color: var(--ua-blue) !important;
-            border-color: var(--ua-blue) !important;
-        }
-        .btn-success:hover {
-            background-color: #001a3d !important;
-        }
-
-        .btn-danger {
-            background-color: var(--ua-red) !important;
-            border-color: var(--ua-red) !important;
-        }
-        .btn-danger:hover {
-            background-color: #b51c27 !important;
-        }
-
-        .btn-outline-dark {
-            color: var(--fti-purple);
-            border-color: var(--fti-purple);
-        }
-        .btn-outline-dark:hover {
-            background-color: var(--fti-purple);
-            color: white;
-        }
-
-        /* Card Headers */
-        .card-header.bg-primary {
-            background-color: var(--ua-blue) !important;
-        }
-        .card-header.bg-secondary {
-            background-color: var(--fti-purple) !important;
-        }
-        .card-header.bg-dark {
-            background-color: var(--ua-blue) !important;
-        }
-
-        /* Alerts & Badges */
-        .badge.bg-secondary {
-            background-color: var(--fti-pastel) !important;
-            color: var(--ua-blue) !important;
-        }
-        .badge.bg-success {
-            background-color: var(--ua-blue) !important;
-        }
-        .badge.bg-danger {
-            background-color: var(--ua-red) !important;
-        }
-        .badge.bg-primary {
-            background-color: var(--fti-purple) !important;
-        }
-
-        /* Viewer Containers */
-        .image-viewer-container {
-            background-color: #f8f9fa;
-            border: 2px solid var(--fti-pastel);
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
 <div class="container mt-5 mb-5">
     <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
         <div class="d-flex align-items-center">
-            <img src="/static/Logo_InViLab_2023_Slogan_horizontal_color.svg" alt="InViLab Logo" style="height: 60px; margin-right: 15px;">
+            <img src="{{ url_for('static', filename='Logo_InViLab_2023_Slogan_horizontal_color.svg') }}" alt="InViLab Logo" style="height: 60px; margin-right: 15px;">
             <h2 class="mb-0">InViLab Camera Calibration</h2>
         </div>
         <span id="statusBadge" class="badge bg-secondary p-2 fs-6">Status: Ready</span>
@@ -111,6 +36,10 @@
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="absoluteCheck">
                         <label class="form-check-label text-dark" for="absoluteCheck">Use Absolute Positions</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-dark fw-bold">Pixel Size (&mu;m) - Optional</label>
+                        <input type="number" class="form-control border-secondary" id="pixelSize" step="0.01" placeholder="e.g. 3.45">
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-dark fw-bold">Upload Images</label>
@@ -138,7 +67,7 @@
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-dark text-white fw-bold">Developer Tools</div>
                 <div class="card-body bg-light border">
-                    <button class="btn btn-outline-dark w-100 mb-2 fw-bold" onclick="showUndistortScript()">Code: Use JSON & Undistort</button>
+                    <button class="btn btn-outline-dark w-100 mb-2 fw-bold" onclick="showCameraParametersScript()">Code: Use CameraParameters JSON</button>
                     <button class="btn btn-outline-dark w-100 fw-bold" onclick="showBatchCalibrationScript()">Code: Batch Calibration Script</button>
                 </div>
             </div>
@@ -293,6 +222,10 @@
         for (let file of fileInput.files) formData.append('files', file);
         formData.append('checker_size', document.getElementById('checkerSize').value);
         formData.append('absolute', document.getElementById('absoluteCheck').checked);
+        const pixelSizeInput = document.getElementById('pixelSize').value;
+        if (pixelSizeInput) {
+            formData.append('pixel_size', pixelSizeInput);
+        }
 
         try {
             const res = await fetch(`/api/calibrate/initial`, { method: 'POST', body: formData });
@@ -362,12 +295,22 @@
         const tbody = document.querySelector('#resultsTable tbody');
         tbody.innerHTML = '';
         const appendRow = (key, vals) => {
-            const valStr = vals[0] !== null ? vals[0].toFixed(4) : '/';
-            const sdStr = vals[1] !== null ? vals[1].toFixed(4) : '/';
+            const valStr = vals && vals[0] !== null && vals[0] !== undefined ? vals[0].toFixed(4) : '/';
+            const sdStr = vals && vals[1] !== null && vals[1] !== undefined ? vals[1].toFixed(4) : '/';
             tbody.innerHTML += `<tr><td class="fw-bold">${key}</td><td>${valStr}</td><td>${sdStr}</td></tr>`;
         };
-        for (const [k, v] of Object.entries(intrinsics)) appendRow(k, v);
+        for (const [k, v] of Object.entries(intrinsics)) {
+            if (k === 'focal_length_mm' || k === 'fov_deg') continue;
+            appendRow(k, v);
+        }
         for (const [k, v] of Object.entries(distortion)) appendRow(k, v);
+        
+        if (intrinsics.focal_length_mm) {
+            tbody.innerHTML += `<tr><td class="fw-bold text-success">Focal Length (mm)</td><td colspan="2" class="text-success">fx: ${intrinsics.focal_length_mm[0].toFixed(2)}, fy: ${intrinsics.focal_length_mm[1].toFixed(2)}</td></tr>`;
+        }
+        if (intrinsics.fov_deg) {
+            tbody.innerHTML += `<tr><td class="fw-bold text-primary">FOV (degrees)</td><td colspan="2" class="text-primary">X: ${intrinsics.fov_deg[0].toFixed(2)}&deg;, Y: ${intrinsics.fov_deg[1].toFixed(2)}&deg;</td></tr>`;
+        }
     }
 
     function renderRMSPlot(plotData) {
@@ -440,7 +383,36 @@
     // --- Exports ---
     function exportJSON() {
         if (!lastCalibrationData) return;
-        const exportObj = { intrinsics: lastCalibrationData.intrinsics, distortion: lastCalibrationData.distortion, rms_error: lastCalibrationData.plot_data.rms };
+        const exportObj = { 
+            f: [lastCalibrationData.intrinsics.fx[0], lastCalibrationData.intrinsics.fy[0]],
+            f_std: [lastCalibrationData.intrinsics.fx[1], lastCalibrationData.intrinsics.fy[1]],
+            c: [lastCalibrationData.intrinsics.cx[0], lastCalibrationData.intrinsics.cy[0]],
+            c_std: [lastCalibrationData.intrinsics.cx[1], lastCalibrationData.intrinsics.cy[1]],
+            s: lastCalibrationData.intrinsics.s[0],
+            s_std: lastCalibrationData.intrinsics.s[1],
+            radial_dist_coeffs: [
+                lastCalibrationData.distortion.k1[0],
+                lastCalibrationData.distortion.k2[0],
+                lastCalibrationData.distortion.k3[0]
+            ],
+            radial_dist_coeffs_std: [
+                lastCalibrationData.distortion.k1[1],
+                lastCalibrationData.distortion.k2[1],
+                lastCalibrationData.distortion.k3[1]
+            ],
+            tangential_dist_coeffs: [
+                lastCalibrationData.distortion.p1[0],
+                lastCalibrationData.distortion.p2[0]
+            ],
+            tangential_dist_coeffs_std: [
+                lastCalibrationData.distortion.p1[1],
+                lastCalibrationData.distortion.p2[1]
+            ],
+            rms_reproj_error: lastCalibrationData.plot_data.rms,
+            sensor_dimensions: lastCalibrationData.sensor_dimensions,
+            pixel_size: lastCalibrationData.pixel_size || null,
+            info: null
+        };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 4));
         const anchor = document.createElement('a'); anchor.href = dataStr; anchor.download = "calibration_parameters.json";
         document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
@@ -474,74 +446,61 @@
         });
     }
 
-    function showUndistortScript() {
+    function showCameraParametersScript() {
         const script = `# ========================================================
 # HOW TO RUN:
-# 1. Open your terminal or command prompt.
-# 2. Install requirements:
-#    pip install opencv-python numpy
-# 3. Ensure 'calibration_parameters.json' and a test image are in the same folder.
+# 1. Ensure your pycamcalib environment is active.
+# 2. Ensure 'calibration_parameters.json' is in the same folder.
 # ========================================================
 
-import json
+from PyCamCalib.core.CameraParameters import CameraParameters
+
+from PyCamCalib.core.CameraParameters import CameraParameters
 import cv2
-import numpy as np
+import matplotlib.pyplot as plt
 
 def main():
-    # 1. Load the JSON exported from the InViLab web app
-    with open('calibration_parameters.json', 'r') as f:
-        calib_data = json.load(f)
+    # 1. Initialize the camera parameters object
+    cam_params = CameraParameters()
 
-    intrinsics = calib_data['intrinsics']
-    distortion = calib_data['distortion']
+    # 2. Load parameters from the downloaded JSON file
+    cam_params.load_parameters_from_json('calibration_parameters.json')
 
-    # 2. Extract into OpenCV Matrix formats
-    camera_matrix = np.array([
-        [intrinsics['fx'][0], 0, intrinsics['cx'][0]],
-        [0, intrinsics['fy'][0], intrinsics['cy'][0]],
-        [0, 0, 1]
-    ], dtype=np.float64)
+    # 3. Print out standard focal length in pixels
+    print(f"Focal Length (pixels): fx={cam_params.f[0]:.2f}, fy={cam_params.f[1]:.2f}")
 
-    # Note: OpenCV expects coefficients in order: k1, k2, p1, p2, k3
-    dist_coeffs = np.array([
-        distortion['k1'][0], distortion['k2'][0], distortion['p1'][0],
-        distortion['p2'][0], distortion['k3'][0]
-    ], dtype=np.float64)
+    # 4. Supply the sensor's actual pixel size in mm (e.g., 3.45 um = 0.00345 mm)
+    # Note: If you provided this in the web interface, it might already be in the JSON.
+    if cam_params.pixel_size is None:
+        cam_params.pixel_size = 3.45 / 1000.0
 
-    print("--- Loaded Parameters ---")
-    print("Camera Matrix:\\n", camera_matrix)
-    print("Distortion Coefficients:\\n", dist_coeffs)
-    print("RMS Error:", calib_data.get('rms_error', 'N/A'))
-    print("-------------------------")
+    # 5. Extract calculated Focal Length in millimeters
+    print(f"Focal Length (mm): fx={cam_params.focal_length_mm[0]:.2f}, fy={cam_params.focal_length_mm[1]:.2f}")
 
-    # 3. Load an image to undistort
-    image_path = 'my_image.jpg' # <-- CHANGE THIS to your image path
+    # 6. Extract the calculated Field of View (FOV) angle in degrees
+    print(f"Field of View (degrees): X={cam_params.PerspectiveAngle[0]:.2f}°, Y={cam_params.PerspectiveAngle[1]:.2f}°")
+
+    # 7. Generate and display the distortion plot map
+    cam_params.plot_distortion()
+
+    # 8. Undistort an example image
+    image_path = 'myimage.png'  # <-- Replace with your actual image path
     img = cv2.imread(image_path)
 
-    if img is None:
-        print(f"Error: Could not load '{image_path}'. Check the path.")
-        return
+    if img is not None:
+        print(f"\\nUndistorting '{image_path}'...")
+        # You can adjust alpha (0 to 1) and crop (True/False) based on your needs
+        undistorted_img = cam_params.undistort_image(img, alpha=1, crop=False)
+        plt.imshow(undistorted_img)
+        plt.show()
 
-    # 4. Undistort the image
-    h, w = img.shape[:2]
-    # alpha=1 keeps all pixels, alpha=0 crops invalid pixels
-    new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), 1, (w, h))
-
-    undistorted_img = cv2.undistort(img, camera_matrix, dist_coeffs, None, new_camera_matrix)
-
-    # Crop the image using the ROI if needed (optional)
-    # x, y, w, h = roi
-    # undistorted_img = undistorted_img[y:y+h, x:x+w]
-
-    # Save the result
-    out_path = 'undistorted_output.jpg'
-    cv2.imwrite(out_path, undistorted_img)
-    print(f"Successfully saved undistorted image to '{out_path}'")
+    else:
+        print(f"\\nWarning: Could not load '{image_path}'. Make sure the file exists to test undistortion.")
 
 if __name__ == "__main__":
     main()`;
 
-        displayModal("Python: Use JSON & Undistort Image", script);
+        displayModal("Python: Use CameraParameters Class", script);
     }
 
     function showBatchCalibrationScript() {
@@ -636,11 +595,9 @@ if __name__ == "__main__":
             or the use or other dealings in the software.
         </p>
         <p class="small fw-bold" style="color: var(--ua-blue);">
-            &copy; 2024 InViLab (<a href="https://invilab.be" target="_blank" style="color: var(--ua-blue); text-decoration: none;">invilab.be</a>). All rights reserved.
+            &copy; 2026 Seppe Sels InViLab (<a href="https://invilab.be" target="_blank" style="color: var(--ua-blue); text-decoration: none;">invilab.be</a>). All rights reserved.
         </p>
     </footer>
-
-<div class="modal fade" id="codeModal" tabindex="-1" aria-hidden="true">
 
 </body>
 </html>
