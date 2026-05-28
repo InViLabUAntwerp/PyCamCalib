@@ -1,4 +1,8 @@
 import os
+import os
+# gunicorn --chdir PyCamCalib/camera_calibration_flask/ -w 4 -b 0.0.0.0:8000 app:app
+
+os.environ["MPLBACKEND"] = "Agg"
 import cv2
 import base64
 import numpy as np
