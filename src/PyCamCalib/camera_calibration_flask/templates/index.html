@@ -18,7 +18,10 @@
             <img src="{{ url_for('static', filename='Logo_InViLab_2023_Slogan_horizontal_color.svg') }}" alt="InViLab Logo" style="height: 60px; margin-right: 15px;">
             <h2 class="mb-0">InViLab Camera Calibration</h2>
         </div>
-        <span id="statusBadge" class="badge bg-secondary p-2 fs-6">Status: Ready</span>
+        <div class="text-end">
+            <span id="userCountBadge" class="badge bg-info text-dark p-2 fs-6 me-2 shadow-sm">Users: 1/8</span>
+            <span id="statusBadge" class="badge bg-secondary p-2 fs-6 shadow-sm">Status: Ready</span>
+        </div>
     </div>
 
     <div id="warningAlert" class="alert alert-warning d-none" role="alert"></div>
@@ -180,6 +183,28 @@
 </div>
 
 <script>
+    // --- Generate Unique Tab ID for this specific Page Load ---
+    // --- Generate or Retrieve Unique Tab ID ---
+    // sessionStorage survives page refreshes, but is completely isolated per tab!
+    let TAB_ID = sessionStorage.getItem('invilab_tab_id');
+
+    if (!TAB_ID) {
+        TAB_ID = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        sessionStorage.setItem('invilab_tab_id', TAB_ID);
+    }
+
+    // --- Instantly Free Up Server Slot on Tab Close ---
+    // We use pagehide/visibilitychange to catch tab closures and page unloads
+    window.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            // sendBeacon fires reliably during page unload.
+            // We pass the TAB_ID as a URL parameter because sendBeacon can't set custom headers.
+            navigator.sendBeacon(`/api/disconnect?tid=${TAB_ID}`);
+        }
+    });
+
     // --- UAntwerpen Colors for JS ---
     const uaBlue = '#002e65';
     const uaRed = '#ea2c38';
@@ -190,6 +215,8 @@
     let currentColors = [];
     let lastCalibrationData = null;
     let totalLoadedImages = 0;
+
+    let lastClickTime = 0; // Prevent mobile ghost clicks
 
     // --- Pan/Zoom Controller Class ---
     class ZoomPanController {
@@ -263,7 +290,11 @@
         }
 
         try {
-            const res = await fetch(`/api/calibrate/initial`, { method: 'POST', body: formData });
+            const res = await fetch(`/api/calibrate/initial`, {
+                method: 'POST',
+                headers: { 'X-Tab-ID': TAB_ID },
+                body: formData
+            });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Server error");
 
@@ -289,14 +320,53 @@
         submitRecalibrationRequest();
     }
 
+    // --- Server Status Polling ---
+    function checkServerStatus() {
+        fetch('/api/status', { headers: { 'X-Tab-ID': TAB_ID } })
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('userCountBadge');
+                badge.innerText = `Users: ${data.count}/${data.max}`;
+
+                const btnCalibrate = document.getElementById('btnCalibrate');
+
+                if (data.waitlisted) {
+                    btnCalibrate.disabled = true;
+                    badge.className = 'badge bg-danger p-2 fs-6 me-2 shadow-sm';
+                    showAlert('warningAlert', 'The server is currently at maximum capacity (8 users). Please wait, a slot will open up automatically.');
+                } else {
+                    // Only re-enable if it isn't currently uploading
+                    if (document.getElementById('statusBadge').innerText === "Status: Ready") {
+                        btnCalibrate.disabled = false;
+                    }
+                    badge.className = 'badge bg-info text-dark p-2 fs-6 me-2 shadow-sm';
+
+                    // Clear the warning if they just got a slot
+                    const warningEl = document.getElementById('warningAlert');
+                    if (!warningEl.classList.contains('d-none') && warningEl.innerText.includes('maximum capacity')) {
+                        showAlert('warningAlert', null);
+                    }
+                }
+            })
+            .catch(err => console.error("Could not fetch status:", err));
+    }
+
+    // Check immediately on load, and then every 10 seconds
+    checkServerStatus();
+    setInterval(checkServerStatus, 10000);
+
     async function submitRecalibrationRequest() {
         setStatus("Recalculating...", "bg-warning text-dark");
         showAlert('errorAlert', null); showAlert('warningAlert', null);
 
         try {
             const res = await fetch(`/api/calibrate/recalculate`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Tab-ID': TAB_ID
+                },
+                body: JSON.stringify({
                     excluded_indices: excludedIndices,
                     info: document.getElementById('infoInput').value
                 })
@@ -343,7 +413,7 @@
             appendRow(k, v);
         }
         for (const [k, v] of Object.entries(distortion)) appendRow(k, v);
-        
+
         if (intrinsics.focal_length_mm) {
             tbody.innerHTML += `<tr><td class="fw-bold text-success">Focal Length (mm)</td><td colspan="2" class="text-success">fx: ${intrinsics.focal_length_mm[0].toFixed(2)}, fy: ${intrinsics.focal_length_mm[1].toFixed(2)}</td></tr>`;
         }
@@ -354,14 +424,14 @@
 
     function updatePlotsColors() {
         if (!lastCalibrationData) return;
-        
-        const currentColors = lastCalibrationData.plot_data.indices.map(idx => 
+
+        const currentColors = lastCalibrationData.plot_data.indices.map(idx =>
             pendingRemoval.includes(idx) ? uaRed : uaBlue
         );
         Plotly.restyle('reprojPlot', 'marker.color', [currentColors]);
-        
+
         if (lastCalibrationData.plot_data.extrinsics) {
-            const extrinsicsColors = lastCalibrationData.plot_data.extrinsics.map(ext => 
+            const extrinsicsColors = lastCalibrationData.plot_data.extrinsics.map(ext =>
                 pendingRemoval.includes(ext.index) ? uaRed : uaBlue
             );
             const traceIndices = Array.from({length: extrinsicsColors.length}, (_, i) => i + 1);
@@ -383,8 +453,9 @@
 
         const layout = {
             margin: { t: 30, b: 40, l: 50, r: 10 },
-            xaxis: { title: 'Image Index', type: 'category' },
-            yaxis: { title: 'Reprojection Error (RMS) (pixels)' },
+            xaxis: { title: 'Image Index', type: 'category', fixedrange: true },
+            yaxis: { title: 'Reprojection Error (RMS) (pixels)', fixedrange: true },
+            dragmode: false, // Disables zooming/panning on this plot so single taps work on mobile
             shapes: [{
                 // RMS Line uses FTI Purple
                 type: 'line', x0: -0.5, x1: plotData.indices.length - 0.5,
@@ -398,6 +469,12 @@
         Plotly.newPlot('reprojPlot', [trace], layout);
 
         document.getElementById('reprojPlot').on('plotly_click', function(data) {
+            // --- Prevent Mobile Ghost Clicks ---
+            const now = Date.now();
+            if (now - lastClickTime < 400) return;
+            lastClickTime = now;
+            // -----------------------------------
+
             const pointIndex = data.points[0].pointIndex;
             const imageIndex = parseInt(data.points[0].x);
             const pendingIndex = pendingRemoval.indexOf(imageIndex);
@@ -416,9 +493,9 @@
             document.getElementById('extrinsicsPlot').innerHTML = '<p class="text-muted text-center mt-5">No 3D data available</p>';
             return;
         }
-        
+
         const data = [];
-        
+
         data.push({
             x: [0], y: [0], z: [0],
             mode: 'markers+text',
@@ -434,10 +511,10 @@
             const x = ext.points.map(p => p[0]);
             const y = ext.points.map(p => p[1]);
             const z = ext.points.map(p => p[2]);
-            
+
             const isRemoved = pendingRemoval.includes(ext.index);
             const color = isRemoved ? uaRed : uaBlue;
-            
+
             data.push({
                 x: x, y: y, z: z,
                 mode: 'markers',
@@ -464,13 +541,19 @@
         Plotly.newPlot('extrinsicsPlot', data, layout);
 
         document.getElementById('extrinsicsPlot').on('plotly_click', function(data) {
+            // --- Prevent Mobile Ghost Clicks ---
+            const now = Date.now();
+            if (now - lastClickTime < 400) return;
+            lastClickTime = now;
+            // -----------------------------------
+
             if (data.points[0].curveNumber === 0) return; // Ignore camera click
-            
+
             const traceName = data.points[0].data.name;
             const match = traceName.match(/Image (\d+)/);
             if (!match) return;
             const imageIndex = parseInt(match[1]);
-            
+
             const pendingIndex = pendingRemoval.indexOf(imageIndex);
             if (pendingIndex === -1) {
                 pendingRemoval.push(imageIndex);
@@ -492,7 +575,7 @@
 
     async function fetchDetectionImage(index) {
         try {
-            const res = await fetch(`/api/detections/${index}`);
+            const res = await fetch(`/api/detections/${index}`, { headers: { 'X-Tab-ID': TAB_ID } });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
 
@@ -510,7 +593,7 @@
     // --- Exports ---
     function exportJSON() {
         if (!lastCalibrationData) return;
-        const exportObj = { 
+        const exportObj = {
             f: [lastCalibrationData.intrinsics.fx[0], lastCalibrationData.intrinsics.fy[0]],
             f_std: [lastCalibrationData.intrinsics.fx[1], lastCalibrationData.intrinsics.fy[1]],
             c: [lastCalibrationData.intrinsics.cx[0], lastCalibrationData.intrinsics.cy[0]],
@@ -541,13 +624,13 @@
             info: lastCalibrationData.info || null
         };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 4));
-        
+
         let filename = "calibration_parameters.json";
         if (lastCalibrationData.info) {
             const safeInfo = lastCalibrationData.info.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             filename = `calibration_parameters_${safeInfo}.json`;
         }
-        
+
         const anchor = document.createElement('a'); anchor.href = dataStr; anchor.download = filename;
         document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
     }

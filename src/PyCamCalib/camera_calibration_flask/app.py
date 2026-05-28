@@ -1,6 +1,7 @@
 import os
-import os
-# gunicorn --chdir PyCamCalib/camera_calibration_flask/ -w 4 -b 0.0.0.0:8000 app:app
+import time
+import uuid
+#gunicorn --chdir PyCamCalib/camera_calibration_flask/ -w 1 --threads 4 -b 0.0.0.0:8000 app:app
 
 os.environ["MPLBACKEND"] = "Agg"
 import cv2
@@ -11,7 +12,7 @@ import matplotlib
 matplotlib.use('Agg') # Force matplotlib to run in background without windows
 import matplotlib.pyplot as plt
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 from werkzeug.utils import secure_filename
 
 # Import your exact InViLab calibration logic
@@ -20,10 +21,11 @@ from PyCamCalib.core.exceptions import ImageError, CalibrationError
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 
-# Global state to mimic the PySide6 MainWindow state.
+# State class to mimic the PySide6 MainWindow state.
 class AppState:
     def __init__(self):
         self.calibrator = CameraCalibrator()
@@ -36,9 +38,71 @@ class AppState:
         self.board_size = None
 
 
-state = AppState()
+# --- User & State Tracking via Tab ID ---
+active_tabs = {}
+user_states = {}  # Map Tab IDs to their own isolated AppState
+MAX_USERS = 8
+USER_TIMEOUT = 300  # 5 minutes of inactivity before a slot opens up
 
 
+def get_tab_id():
+    """Retrieves the Tab ID sent by the frontend, fallback to session if missing."""
+    tab_id = request.headers.get('X-Tab-ID')
+    if not tab_id:
+        if 'session_id' not in session:
+            session['session_id'] = uuid.uuid4().hex
+        return session['session_id']
+    return tab_id
+
+
+def get_user_state():
+    """Retrieves or creates a unique state for the current Tab ID."""
+    tid = get_tab_id()
+    if tid not in user_states:
+        user_states[tid] = AppState()
+    return user_states[tid]
+
+
+@app.before_request
+def track_users():
+    if request.endpoint == 'static':
+        return
+
+    tid = get_tab_id()
+    current_time = time.time()
+
+    # 1. Clean up old inactive tabs and their heavy memory states
+    expired_tids = [k for k, v in active_tabs.items() if current_time - v > USER_TIMEOUT]
+    for k in expired_tids:
+        del active_tabs[k]
+        if k in user_states:
+            del user_states[k]  # Free up memory!
+
+    # 2. Register or update the current tab
+    if tid not in active_tabs and len(active_tabs) >= MAX_USERS:
+        # Enforce maximum user limit
+        if request.endpoint not in ('index', 'get_status'):
+            return jsonify({"error": "Server is at maximum capacity. Please wait for a slot."}), 429
+    else:
+        active_tabs[tid] = current_time
+
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    tid = get_tab_id()
+    count = len(active_tabs)
+    # If the server is full and the tab isn't already inside, they are waitlisted
+    is_waitlisted = (count >= MAX_USERS and tid not in active_tabs)
+    return jsonify({"count": count, "max": MAX_USERS, "waitlisted": is_waitlisted})
+@app.route('/api/disconnect', methods=['POST'])
+def disconnect():
+    """Instantly frees up a user slot when they close the tab."""
+    tid = request.headers.get('X-Tab-ID') or get_tab_id()
+    if tid in active_tabs:
+        del active_tabs[tid]
+    if tid in user_states:
+        del user_states[tid]
+    return jsonify({"status": "disconnected"}), 200
 def calculate_distortion_map(m, d, sensor_size):
     """Replicates the math from DistortionPlotWidget.plot_distortion to generate an image with arrows."""
     try:
@@ -63,7 +127,7 @@ def calculate_distortion_map(m, d, sensor_size):
         dv = v2 - np.ravel(v, order='F')
         dr = np.reshape(np.hypot(du, dv), u.shape, order='F')
 
-        # Create Matplotlib Figure (Exactly like your original PySide6 app)
+        # Create Matplotlib Figure
         fig, ax = plt.subplots(figsize=(7, 5))
         ax.quiver(np.ravel(u, order='F') + 1, np.ravel(v, order='F') + 1, du, dv, color='b')
         ax.plot(width / 2, height / 2, 'x', label='Sensor center')
@@ -91,17 +155,16 @@ def calculate_distortion_map(m, d, sensor_size):
         return None
 
 
-def format_calibration_response(params: CameraParameters, calibrator: CameraCalibrator):
+def format_calibration_response(params: CameraParameters, calibrator: CameraCalibrator, state: AppState):
     """Helper method to extract data for JSON serialization."""
 
-    # Grab the matrices for the distortion plot calculation
     m = params.get_intrinsics_matrix_opencv()
     d = params.get_distortion_coeffs_opencv()
 
     focal_length_mm = None
     if params.pixel_size is not None:
         focal_length_mm = [float(params.focal_length_mm[0]), float(params.focal_length_mm[1])]
-        
+
     fov_deg = [float(params.PerspectiveAngle[0]), float(params.PerspectiveAngle[1])]
 
     extrinsics_data = []
@@ -162,10 +225,14 @@ def index():
 
 @app.route('/api/calibrate/initial', methods=['POST'])
 def calibrate_initial():
+
     if 'files' not in request.files:
         return jsonify({"error": "No images provided"}), 400
 
-    # Complete reset of state for a clean new calibration run
+    # Get the unique state for this specific tab
+    state = get_user_state()
+
+    # Complete reset of state for a clean new calibration run for this tab
     state.calibrator = CameraCalibrator()
     state.calibration_parameters = CameraParameters()
     state.image_names = []
@@ -215,14 +282,13 @@ def calibrate_initial():
             state.image_array = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
         elif image.shape != state.image_array.shape[:-1]:
             return jsonify({"error": f"Image dimensions mismatch for {filename}. All images must be exactly the same size."}), 400
-            
+
         state.image_array[..., idx] = image
         state.image_names.append(filename)
 
     try:
         sensor_dimensions = np.array([state.image_array.shape[1], state.image_array.shape[0]])
-        
-        # Auto-detect board size if not explicitly provided
+
         detected_board_size = board_size
         if detected_board_size is None:
             for i in range(state.image_array.shape[-1]):
@@ -237,16 +303,13 @@ def calibrate_initial():
                         ys = np.unique(np.round(obj_pts[:, 1], decimals=3))
                         detected_board_size = (len(xs), len(ys))
                         break
-        
+
         state.board_size = detected_board_size
 
         state.calibrator.construct_feature_list(
             state.image_array, checker_size, detected_board_size, marker_location, expand=expand, predict=predict
         )
 
-        # If the user explicitly requested absolute positions, the feature detector might still
-        # return a score of 1 because marked checkerboards (which guarantee absolute orientation)
-        # are not implemented. We manually upgrade the score if the full expected board was found.
         if state.absolute and detected_board_size is not None:
             expected_points = detected_board_size[0] * detected_board_size[1]
             for feature in state.calibrator.feature_list:
@@ -263,7 +326,7 @@ def calibrate_initial():
             state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
         if state.info is not None:
             state.calibration_parameters.info = state.info
-        return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator))
+        return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator, state))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -271,6 +334,9 @@ def calibrate_initial():
 
 @app.route('/api/calibrate/recalculate', methods=['POST'])
 def calibrate_recalculate():
+    # Retrieve the unique state for this specific tab
+    state = get_user_state()
+
     data = request.json
     excluded_indices = set(data.get('excluded_indices', []))
 
@@ -289,7 +355,7 @@ def calibrate_recalculate():
             state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
         if state.info is not None:
             state.calibration_parameters.info = state.info
-        return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator))
+        return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator, state))
     except Exception as e:
         return jsonify({"error": f"Calibration error: {str(e)}"}), 500
 
@@ -297,41 +363,36 @@ def calibrate_recalculate():
 @app.route('/api/detections/<int:index>', methods=['GET'])
 def get_detection_image(index):
     """Returns the image at the given index with detection points drawn on it."""
+    # Retrieve the unique state for this specific tab
+    state = get_user_state()
+
     if state.image_array is None or index < 0 or index >= state.image_array.shape[-1]:
         return jsonify({"error": "Invalid image index"}), 400
 
-    # Get a copy of the image to draw on
     img = state.image_array[..., index].copy()
 
-    # Check if feature list exists for this image
     if index < len(state.calibrator.feature_list):
         feature = state.calibrator.feature_list[index]
         if feature.score > 0:
-            # Replicating your PySide6 Color Logic
             min_score = 2 if state.absolute else 1
             if feature.score >= min_score:
-                color = (0, 255, 0) if index in state.calibrator.indices else (0, 0,
-                                                                               255)  # Green if used, Red if excluded
+                color = (0, 255, 0) if index in state.calibrator.indices else (0, 0, 255)
             else:
-                color = (255, 0, 0)  # Blue for poor score
+                color = (255, 0, 0)
 
-            # Draw the points
             for pt in feature.image_points:
                 x, y = int(pt[0]), int(pt[1])
                 cv2.circle(img, (x, y), 5, color, -1)
 
         shape_str = "N/A"
         if feature.score > 0 and feature.object_points is not None and len(feature.object_points) > 0:
-            # Calculate size dynamically based on 3D Object Space points assigned
             xs = np.unique(np.round(feature.object_points[:, 0], decimals=3))
             ys = np.unique(np.round(feature.object_points[:, 1], decimals=3))
             shape_str = f"{len(xs)}x{len(ys)}"
 
-    # Encode image to Base64 to send to HTML
     _, buffer = cv2.imencode('.jpg', img)
     img_base64 = base64.b64encode(buffer).decode('utf-8')
 
-    # Find the error if it exists for this image
     try:
         err_idx = state.calibrator.indices.index(index)
         reproj_err = round(float(state.calibrator.per_view_err[err_idx]), 4)

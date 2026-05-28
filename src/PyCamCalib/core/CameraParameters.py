@@ -18,7 +18,6 @@ except:
     from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
 import matplotlib
 
-matplotlib.use('TkAgg')
 
 
 class CameraParameters:
