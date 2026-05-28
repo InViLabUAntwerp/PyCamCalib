@@ -11,7 +11,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib
-matplotlib.use('TkAgg')
 
 #%% Load images into array
 files = glob.glob('camera_images/*.tiff')
