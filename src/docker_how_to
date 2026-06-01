@@ -1,0 +1,9 @@
+#Build
+go to src folder in terminal
+
+sudo docker build -t invilab-calib .
+sudo docker run -d -p 8080:8000 --name my-calibration-server invilab-calib
+
+if needed
+sudo docker logs my-calibration-server
+sudo docker rm -f my-calibration-server
