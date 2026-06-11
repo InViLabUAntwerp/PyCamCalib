@@ -18,6 +18,7 @@ except:
     from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
 from .CameraParameters import CameraParameters
 
+from multiprocessing import shared_memory
 from concurrent.futures import ProcessPoolExecutor
 
 # --- SIMPLE PICKLABLE WRAPPER ---
@@ -31,17 +32,14 @@ class SimpleFeature:
         self.image_points = image_points
         self.object_points = object_points
 
-
-# --- MODULE LEVEL WORKERS FOR MULTIPROCESSING ---
+_SHM_CAM = None
 _SHARED_CAM_ARRAY = None
-_SHARED_STEREO_ARRAYS = None
 
-
-def _init_camera_worker(image_array):
-    """Initializer for CameraCalibrator workers. Loads the image array into global scope once."""
-    global _SHARED_CAM_ARRAY
-    _SHARED_CAM_ARRAY = image_array
-
+def _init_camera_worker(shm_name, shape, dtype):
+    """Initializer for CameraCalibrator workers. Attaches to existing shared memory."""
+    global _SHM_CAM, _SHARED_CAM_ARRAY
+    _SHM_CAM = shared_memory.SharedMemory(name=shm_name)
+    _SHARED_CAM_ARRAY = np.ndarray(shape, dtype=dtype, buffer=_SHM_CAM.buf)
 
 def _camera_worker(args):
     """Worker function for single camera feature detection."""
@@ -81,12 +79,23 @@ def _camera_worker(args):
 
     return idx, SimpleFeature(score, img_pts, obj_pts)
 
+_SHM_CAM1 = None
+_SHM_CAM2 = None
+_SHARED_CAM1_ARRAY = None
+_SHARED_CAM2_ARRAY = None
 
-def _init_stereo_worker(image_array_1, image_array_2):
-    """Initializer for StereoCalibrator workers."""
-    global _SHARED_STEREO_ARRAYS
-    _SHARED_STEREO_ARRAYS = (image_array_1, image_array_2)
+def _init_stereo_worker(shm_name_1, shape_1, dtype_1,
+                        shm_name_2, shape_2, dtype_2):
+    """Initializer for StereoCalibrator workers. Attaches to existing shared memory blocks."""
+    global _SHM_CAM1, _SHM_CAM2, _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY
 
+    # Attach to shared memory block for camera 1
+    _SHM_CAM1 = shared_memory.SharedMemory(name=shm_name_1)
+    _SHARED_CAM1_ARRAY = np.ndarray(shape_1, dtype=dtype_1, buffer=_SHM_CAM1.buf)
+
+    # Attach to shared memory block for camera 2
+    _SHM_CAM2 = shared_memory.SharedMemory(name=shm_name_2)
+    _SHARED_CAM2_ARRAY = np.ndarray(shape_2, dtype=dtype_2, buffer=_SHM_CAM2.buf)
 
 def _stereo_worker(args):
     """Worker function for stereo camera feature detection."""
@@ -99,11 +108,15 @@ def _stereo_worker(args):
         kwargs_dict,
         show_processing,
     ) = args
-    global _SHARED_STEREO_ARRAYS
+    global _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY
 
     from .feature_detection import FeatureDetector
 
-    image_array = _SHARED_STEREO_ARRAYS[cam_id]
+    # Pick the right shared array based on camera ID
+    if cam_id == 0:
+        image_array = _SHARED_CAM1_ARRAY
+    else:
+        image_array = _SHARED_CAM2_ARRAY
 
     detector = FeatureDetector(
         space_between_features,
@@ -132,7 +145,6 @@ def _stereo_worker(args):
         obj_pts = None
         score = -1
 
-    # Return cam_id so we can separate the results later
     return idx, cam_id, SimpleFeature(score, img_pts, obj_pts)
 
 
@@ -218,29 +230,35 @@ class CameraCalibrator:
         return camera_parameters
 
     def construct_feature_list(
-        self,
-        image_array,
-        space_between_features,
-        board_size=None,
-        marker=None,
-        **kwargs,
+            self,
+            image_array,
+            space_between_features,
+            board_size=None,
+            marker=None,
+            **kwargs,
     ):
         n_images = image_array.shape[-1]
         n_workers = min(os.cpu_count() or 4, n_images)
 
-        # Prepare arguments for the worker
+        shm = shared_memory.SharedMemory(create=True, size=image_array.nbytes)
+        shared_arr = np.ndarray(image_array.shape, dtype=image_array.dtype, buffer=shm.buf)
+        shared_arr[:] = image_array[:]
+
         tasks = [
             (idx, space_between_features, board_size, marker, kwargs, self.FeatureDetector_logging)
             for idx in range(n_images)
         ]
 
-        # Use ProcessPoolExecutor with an initializer to share the large image array
-        with ProcessPoolExecutor(
-            max_workers=n_workers,
-            initializer=_init_camera_worker,
-            initargs=(image_array,)
-        ) as executor:
-            results = list(executor.map(_camera_worker, tasks))
+        try:
+            with ProcessPoolExecutor(
+                    max_workers=n_workers,
+                    initializer=_init_camera_worker,
+                    initargs=(shm.name, image_array.shape, image_array.dtype)
+            ) as executor:
+                results = list(executor.map(_camera_worker, tasks))
+        finally:
+            shm.close()
+            shm.unlink()
 
         results.sort(key=lambda x: x[0])
         self.feature_list = [feature for _, feature in results]
@@ -612,17 +630,28 @@ class StereoCalibrator:
         return self.stereo_parameters
 
     def construct_feature_lists(
-        self,
-        image_array_1,
-        image_array_2,
-        space_between_features,
-        board_size,
-        marker,
-        **kwargs,
+            self,
+            image_array_1,
+            image_array_2,
+            space_between_features,
+            board_size,
+            marker,
+            **kwargs,
     ):
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
         n_workers = min(os.cpu_count() or 4, max(n_images_1, n_images_2))
+
+        # --- SHARED MEMORY SETUP ---
+        # Create shared memory block for camera 1
+        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
+        shared_arr1 = np.ndarray(image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf)
+        shared_arr1[:] = image_array_1[:]  # Copy data ONCE into shared memory
+
+        # Create shared memory block for camera 2
+        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
+        shared_arr2 = np.ndarray(image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf)
+        shared_arr2[:] = image_array_2[:]  # Copy data ONCE into shared memory
 
         # Prepare tasks for both cameras
         tasks = []
@@ -651,13 +680,23 @@ class StereoCalibrator:
                 )
             )
 
-        # Process both cameras simultaneously in the same pool
-        with ProcessPoolExecutor(
-            max_workers=n_workers,
-            initializer=_init_stereo_worker,
-            initargs=(image_array_1, image_array_2),
-        ) as executor:
-            results = list(executor.map(_stereo_worker, tasks))
+        try:
+            # Pass the shared memory NAMES (strings), shapes and dtypes to workers
+            with ProcessPoolExecutor(
+                    max_workers=n_workers,
+                    initializer=_init_stereo_worker,
+                    initargs=(
+                            shm1.name, image_array_1.shape, image_array_1.dtype,
+                            shm2.name, image_array_2.shape, image_array_2.dtype,
+                    ),
+            ) as executor:
+                results = list(executor.map(_stereo_worker, tasks))
+        finally:
+            # IMPORTANT: Always clean up shared memory, even if something crashes
+            shm1.close()
+            shm1.unlink()
+            shm2.close()
+            shm2.unlink()
 
         # Sort by camera ID first, then by image index
         results.sort(key=lambda x: (x[1], x[0]))

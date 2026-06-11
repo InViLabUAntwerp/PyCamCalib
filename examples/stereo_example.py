@@ -14,7 +14,7 @@ from matplotlib.patches import ConnectionPatch, Rectangle
 import time
 
 #%% Load image sets for both cameras
-files = sorted(glob.glob('stereo_images/left/*.tiff'))
+files = sorted(glob.glob('C:/Users\simon\PycharmProjects\A3DTS_RPI\CB_frames/rpi_21/*.png'))
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -22,7 +22,7 @@ for image_idx in range(n_images):
         image_array_1 = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
     image_array_1[..., image_idx] = image
 
-files = sorted(glob.glob('stereo_images/right/*.tiff'))
+files = sorted(glob.glob('C:/Users\simon\PycharmProjects\A3DTS_RPI\CB_frames/rpi_22/*.png'))
 n_images = len(files)
 for image_idx in range(n_images):
     image = cv2.imread(files[image_idx])
@@ -85,7 +85,7 @@ for image_idx in range(n_images):
     plt.show()
 
 #%% Plot reprojection errors
-#stereo_calibrator.plot_reproj_error()
+stereo_calibrator.plot_reproj_error()
 
 #%% Retry calibration after removing potential outliers
 #stereo_calibrator.calibrate_indices([1, 2, 3, 4, 5, 6, 7, 8])
