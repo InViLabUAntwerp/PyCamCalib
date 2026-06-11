@@ -10,7 +10,6 @@ import numpy.typing as npt
 from rx import empty
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional
-
 from .exceptions import CalibrationError
 from .feature_detection import FeatureDetector
 try:
@@ -18,6 +17,124 @@ try:
 except:
     from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
 from .CameraParameters import CameraParameters
+
+from concurrent.futures import ProcessPoolExecutor
+
+# --- SIMPLE PICKLABLE WRAPPER ---
+# C++ objects often can't be pickled across process boundaries.
+# We extract the data we need and wrap it in this simple class.
+class SimpleFeature:
+    __slots__ = ["score", "image_points", "object_points"]
+
+    def __init__(self, score, image_points, object_points):
+        self.score = score
+        self.image_points = image_points
+        self.object_points = object_points
+
+
+# --- MODULE LEVEL WORKERS FOR MULTIPROCESSING ---
+_SHARED_CAM_ARRAY = None
+_SHARED_STEREO_ARRAYS = None
+
+
+def _init_camera_worker(image_array):
+    """Initializer for CameraCalibrator workers. Loads the image array into global scope once."""
+    global _SHARED_CAM_ARRAY
+    _SHARED_CAM_ARRAY = image_array
+
+
+def _camera_worker(args):
+    """Worker function for single camera feature detection."""
+    idx, space_between_features, board_size, marker, kwargs_dict, show_processing = args
+    global _SHARED_CAM_ARRAY
+
+    # Import inside the worker to avoid pickling issues with the C++ backend
+    from .feature_detection import FeatureDetector
+
+    detector = FeatureDetector(
+        space_between_features,
+        board_size,
+        marker,
+        **kwargs_dict,
+    )
+    detector.detector.checkerboard_detector.detector.show_processing = show_processing
+
+    feature = detector.detect_feature(_SHARED_CAM_ARRAY[..., idx])
+
+    # Extract data immediately while we have exclusive access to the C++ buffer
+    try:
+        img_pts = (
+            np.array(feature.image_points, copy=True)
+            if getattr(feature, "image_points", None) is not None
+            else None
+        )
+        obj_pts = (
+            np.array(feature.object_points, copy=True)
+            if getattr(feature, "object_points", None) is not None
+            else None
+        )
+        score = feature.score
+    except Exception:
+        img_pts = None
+        obj_pts = None
+        score = -1
+
+    return idx, SimpleFeature(score, img_pts, obj_pts)
+
+
+def _init_stereo_worker(image_array_1, image_array_2):
+    """Initializer for StereoCalibrator workers."""
+    global _SHARED_STEREO_ARRAYS
+    _SHARED_STEREO_ARRAYS = (image_array_1, image_array_2)
+
+
+def _stereo_worker(args):
+    """Worker function for stereo camera feature detection."""
+    (
+        idx,
+        cam_id,
+        space_between_features,
+        board_size,
+        marker,
+        kwargs_dict,
+        show_processing,
+    ) = args
+    global _SHARED_STEREO_ARRAYS
+
+    from .feature_detection import FeatureDetector
+
+    image_array = _SHARED_STEREO_ARRAYS[cam_id]
+
+    detector = FeatureDetector(
+        space_between_features,
+        board_size,
+        marker,
+        **kwargs_dict,
+    )
+    detector.detector.checkerboard_detector.detector.show_processing = show_processing
+
+    feature = detector.detect_feature(image_array[..., idx])
+
+    try:
+        img_pts = (
+            np.array(feature.image_points, copy=True)
+            if getattr(feature, "image_points", None) is not None
+            else None
+        )
+        obj_pts = (
+            np.array(feature.object_points, copy=True)
+            if getattr(feature, "object_points", None) is not None
+            else None
+        )
+        score = feature.score
+    except Exception:
+        img_pts = None
+        obj_pts = None
+        score = -1
+
+    # Return cam_id so we can separate the results later
+    return idx, cam_id, SimpleFeature(score, img_pts, obj_pts)
+
 
 class CameraCalibrator:
     """Object used to calibrate a camera.
@@ -100,30 +217,33 @@ class CameraCalibrator:
 
         return camera_parameters
 
-    def construct_feature_list(self, image_array: npt.NDArray, space_between_features: float,
-                               board_size: Optional[Tuple[int, int]] = None, marker: Optional[Tuple[int, int]] = None,
-                               **kwargs) -> None:
-        """Construct a list with the calibration features for all images in the image_array.
-
-        Unless you want to perform the calibration steps separately, you should not use this method.
-        """
-        self.feature_list = []
-        if self.FeatureDetector is None:
-            self.FeatureDetector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
-            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
-
-        #check if board_size, marker is none
-        if board_size is not None and marker is not None:
-            self.FeatureDetector= FeatureDetector(space_between_features, board_size, marker, **kwargs)
-            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
-        feature_detector = self.FeatureDetector
-
+    def construct_feature_list(
+        self,
+        image_array,
+        space_between_features,
+        board_size=None,
+        marker=None,
+        **kwargs,
+    ):
         n_images = image_array.shape[-1]
-        for idx in range(n_images):
-            feature = feature_detector.detect_feature(image_array[..., idx])
-            self.feature_list.append(feature)
-            if not feature.score > 0:
-                self._logger.info("Failed feature detection on image nr " + str(idx + 1) + ".")
+        n_workers = min(os.cpu_count() or 4, n_images)
+
+        # Prepare arguments for the worker
+        tasks = [
+            (idx, space_between_features, board_size, marker, kwargs, self.FeatureDetector_logging)
+            for idx in range(n_images)
+        ]
+
+        # Use ProcessPoolExecutor with an initializer to share the large image array
+        with ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=_init_camera_worker,
+            initargs=(image_array,)
+        ) as executor:
+            results = list(executor.map(_camera_worker, tasks))
+
+        results.sort(key=lambda x: x[0])
+        self.feature_list = [feature for _, feature in results]
 
     def construct_points_lists(self, indices: list, absolute: bool = False) -> None:
         """Construct lists of image points and object points for calibration.
@@ -491,38 +611,59 @@ class StereoCalibrator:
 
         return self.stereo_parameters
 
-    def construct_feature_lists(self, image_array_1: npt.NDArray, image_array_2: npt.NDArray,
-                                space_between_features: float, board_size: Tuple[int, int],
-                                marker: Optional[Tuple[int, int]], **kwargs) -> None:
-        """Construct a list with the calibration features for all images in image_array.
+    def construct_feature_lists(
+        self,
+        image_array_1,
+        image_array_2,
+        space_between_features,
+        board_size,
+        marker,
+        **kwargs,
+    ):
+        n_images_1 = image_array_1.shape[-1]
+        n_images_2 = image_array_2.shape[-1]
+        n_workers = min(os.cpu_count() or 4, max(n_images_1, n_images_2))
 
-        Unless you want to perform the calibration steps separately, you should not use this method.
-        """
+        # Prepare tasks for both cameras
+        tasks = []
+        for idx in range(n_images_1):
+            tasks.append(
+                (
+                    idx,
+                    0,
+                    space_between_features,
+                    board_size,
+                    marker,
+                    kwargs,
+                    self.FeatureDetector_logging,
+                )
+            )
+        for idx in range(n_images_2):
+            tasks.append(
+                (
+                    idx,
+                    1,
+                    space_between_features,
+                    board_size,
+                    marker,
+                    kwargs,
+                    self.FeatureDetector_logging,
+                )
+            )
 
-        if self.FeatureDetector is None:
-            self.FeatureDetector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
-            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
+        # Process both cameras simultaneously in the same pool
+        with ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=_init_stereo_worker,
+            initargs=(image_array_1, image_array_2),
+        ) as executor:
+            results = list(executor.map(_stereo_worker, tasks))
 
-        #check if board_size, marker is none
-        if board_size is not None and marker is not None:
-            self.FeatureDetector= FeatureDetector(space_between_features, board_size, marker, **kwargs)
-            self.FeatureDetector.detector.checkerboard_detector.detector.show_processing= self.FeatureDetector_logging
-        feature_detector = self.FeatureDetector
-        self.feature_list_1 = []
-        n_images = image_array_1.shape[-1]
-        for idx in range(n_images):
-            feature = feature_detector.detect_feature(image_array_1[..., idx])
-            self.feature_list_1.append(feature)
-            if not feature.score > 0:
-                self._logger.info("Failed feature detection on cam 1 image nr " + str(idx + 1) + ".")
+        # Sort by camera ID first, then by image index
+        results.sort(key=lambda x: (x[1], x[0]))
 
-        self.feature_list_2 = []
-        n_images = image_array_2.shape[-1]
-        for idx in range(n_images):
-            feature = feature_detector.detect_feature(image_array_2[..., idx])
-            self.feature_list_2.append(feature)
-            if not feature.score > 0:
-                self._logger.info("Failed feature detection on cam 2 image nr " + str(idx + 1) + ".")
+        self.feature_list_1 = [feature for _, cam_id, feature in results if cam_id == 0]
+        self.feature_list_2 = [feature for _, cam_id, feature in results if cam_id == 1]
 
     def construct_points_lists(self, indices: list) -> None:
         """Construct lists of image points and object points for calibration.

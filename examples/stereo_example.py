@@ -4,14 +4,14 @@ Some scripts need to be executed in order.
 """
 
 #%% Imports
-from src.PyCamCalib.core.calibration import CameraCalibrator, StereoCalibrator
+from src.PyCamCalib.core.calibration_threaded import CameraCalibrator, StereoCalibrator
 a=1
 import glob
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch, Rectangle
-
+import time
 
 #%% Load image sets for both cameras
 files = sorted(glob.glob('stereo_images/left/*.tiff'))
@@ -32,6 +32,7 @@ for image_idx in range(n_images):
 
 #%% Perform camera and stereo calibration
 # Calibrate each camera.
+start = time.time()
 camera_calibrator = CameraCalibrator()
 param_l = camera_calibrator.calibrate(image_array_1, 1)
 param_r = camera_calibrator.calibrate(image_array_2, 1)
@@ -45,6 +46,8 @@ print(idx_new)
 stereo_parameters = stereo_calibrator.calibrate_indices(idx_new)
 # Save checkerboard detection to images (for debugging)
 stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, '.\stereo_imagesdetected')
+
+print(f"elapsed time since start of project: {time.time()-start};")
 
 #%% Show detections in matching images
 for image_idx in range(n_images):
