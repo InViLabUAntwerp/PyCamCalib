@@ -962,16 +962,19 @@ class StereoCalibrator:
         """Save detection results for both cameras to disk in parallel using optimized workers."""
         if not os.path.exists(path):
             os.makedirs(path)
-
-        n_images  = image_array_1.shape[-1]
-        is_color  = len(image_array_1.shape) == 4
+        n_images = image_array_1.shape[-1]
+        is_color = len(image_array_1.shape) == 4
         n_workers = min(os.cpu_count() or 4, n_images)
 
         shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
         shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
         try:
-            arr1 = np.ndarray(image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf)
-            arr2 = np.ndarray(image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf)
+            arr1 = np.ndarray(
+                image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf
+            )
+            arr2 = np.ndarray(
+                image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf
+            )
             arr1[:] = image_array_1[:]
             arr2[:] = image_array_2[:]
 
@@ -982,31 +985,73 @@ class StereoCalibrator:
                     used_pts_1 = [tuple(p) for p in self.image_points_list_1[fi]]
                     used_pts_2 = [tuple(p) for p in self.image_points_list_2[fi]]
                     det_pts_1 = det_pts_2 = None
-                elif (self.feature_list_1[image_idx].score != 0
-                      and self.feature_list_2[image_idx].score != 0):
+                elif (
+                    image_idx < len(self.feature_list_1)
+                    and image_idx < len(self.feature_list_2)
+                    and self.feature_list_1[image_idx].score != 0
+                    and self.feature_list_2[image_idx].score != 0
+                ):
                     used_pts_1 = used_pts_2 = None
-                    det_pts_1 = [tuple(p) for p in self.feature_list_1[image_idx].image_points]
-                    det_pts_2 = [tuple(p) for p in self.feature_list_2[image_idx].image_points]
+                    det_pts_1 = [
+                        tuple(p) for p in self.feature_list_1[image_idx].image_points
+                    ]
+                    det_pts_2 = [
+                        tuple(p) for p in self.feature_list_2[image_idx].image_points
+                    ]
                 else:
                     used_pts_1 = used_pts_2 = det_pts_1 = det_pts_2 = None
-
-                # Simplified task: only variable data
                 tasks.append((image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2))
 
-            with ThreadPoolExecutor(max_workers=n_workers,
-                                    initializer=_init_save_stereo_worker,
-                                    initargs=(
-                                        shm1.name, image_array_1.shape, image_array_1.dtype,
-                                        shm2.name, image_array_2.shape, image_array_2.dtype,
-                                        is_color, path
-                                    )) as executor:
-                list(executor.map(_save_stereo_worker, tasks))
+            def worker(task):
+                image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2 = task
+
+                img1 = arr1[..., image_idx].copy()
+                img2 = arr2[..., image_idx].copy()
+
+                cvt = cv2.COLOR_BGR2RGB if is_color else cv2.COLOR_GRAY2RGB
+                img1 = cv2.cvtColor(img1, cvt)
+                img2 = cv2.cvtColor(img2, cvt)
+
+                if used_pts_1 is not None:
+                    for pt in used_pts_1:
+                        cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+                    for pt in used_pts_2:
+                        cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+                elif det_pts_1 is not None:
+                    for pt in det_pts_1:
+                        cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+                    for pt in det_pts_2:
+                        cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+
+                tag = "detected with pycbd, InViLab, doi:10.3390/math11224568"
+                for img in (img1, img2):
+                    cv2.putText(
+                        img,
+                        tag,
+                        (10, img.shape[0] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1,
+                        cv2.LINE_AA,
+                    )
+
+                cv2.imwrite(
+                    os.path.join(path, f"image_1_{image_idx + 1}.png"),
+                    cv2.cvtColor(img1, cv2.COLOR_RGB2BGR),
+                )
+                cv2.imwrite(
+                    os.path.join(path, f"image_2_{image_idx + 1}.png"),
+                    cv2.cvtColor(img2, cv2.COLOR_RGB2BGR),
+                )
+
+            with ThreadPoolExecutor(max_workers=n_workers) as executor:
+                list(executor.map(worker, tasks))
         finally:
             shm1.close()
             shm1.unlink()
             shm2.close()
             shm2.unlink()
-
 
 # ---------------------------------------------------------------------------
 # StereoParameters CLASS
