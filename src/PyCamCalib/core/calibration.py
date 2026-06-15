@@ -7,7 +7,6 @@ import h5py
 import logging
 import numpy as np
 import numpy.typing as npt
-from rx import empty
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional
 from .exceptions import CalibrationError
@@ -19,11 +18,9 @@ except:
 from .CameraParameters import CameraParameters
 
 from multiprocessing import shared_memory
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 # --- SIMPLE PICKLABLE WRAPPER ---
-# C++ objects often can't be pickled across process boundaries.
-# We extract the data we need and wrap it in this simple class.
 class SimpleFeature:
     __slots__ = ["score", "image_points", "object_points"]
 
@@ -32,34 +29,31 @@ class SimpleFeature:
         self.image_points = image_points
         self.object_points = object_points
 
+
+# ---------------------------------------------------------------------------
+# OPTIMIZED CAMERA FEATURE DETECTION WORKERS
+# ---------------------------------------------------------------------------
+
 _SHM_CAM = None
 _SHARED_CAM_ARRAY = None
+_DETECTOR_CAM = None
 
-def _init_camera_worker(shm_name, shape, dtype):
-    """Initializer for CameraCalibrator workers. Attaches to existing shared memory."""
-    global _SHM_CAM, _SHARED_CAM_ARRAY
+def _init_camera_worker(shm_name, shape, dtype, space_between_features, board_size, marker, kwargs_dict, show_processing):
+    """Initializer for CameraCalibrator workers. Attaches to shared memory and creates detector once."""
+    global _SHM_CAM, _SHARED_CAM_ARRAY, _DETECTOR_CAM
     _SHM_CAM = shared_memory.SharedMemory(name=shm_name)
     _SHARED_CAM_ARRAY = np.ndarray(shape, dtype=dtype, buffer=_SHM_CAM.buf)
 
-def _camera_worker(args):
-    """Worker function for single camera feature detection."""
-    idx, space_between_features, board_size, marker, kwargs_dict, show_processing = args
-    global _SHARED_CAM_ARRAY
-
-    # Import inside the worker to avoid pickling issues with the C++ backend
     from .feature_detection import FeatureDetector
+    _DETECTOR_CAM = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
+    _DETECTOR_CAM.detector.checkerboard_detector.detector.show_processing = show_processing
 
-    detector = FeatureDetector(
-        space_between_features,
-        board_size,
-        marker,
-        **kwargs_dict,
-    )
-    detector.detector.checkerboard_detector.detector.show_processing = show_processing
+def _camera_worker(idx):
+    """Worker function for single camera feature detection. Only receives index."""
+    global _SHARED_CAM_ARRAY, _DETECTOR_CAM
 
-    feature = detector.detect_feature(_SHARED_CAM_ARRAY[..., idx])
+    feature = _DETECTOR_CAM.detect_feature(_SHARED_CAM_ARRAY[..., idx])
 
-    # Extract data immediately while we have exclusive access to the C++ buffer
     try:
         img_pts = (
             np.array(feature.image_points, copy=True)
@@ -79,54 +73,38 @@ def _camera_worker(args):
 
     return idx, SimpleFeature(score, img_pts, obj_pts)
 
+
+# ---------------------------------------------------------------------------
+# OPTIMIZED STEREO FEATURE DETECTION WORKERS
+# ---------------------------------------------------------------------------
+
 _SHM_CAM1 = None
 _SHM_CAM2 = None
 _SHARED_CAM1_ARRAY = None
 _SHARED_CAM2_ARRAY = None
+_DETECTOR_STEREO = None
 
-def _init_stereo_worker(shm_name_1, shape_1, dtype_1,
-                        shm_name_2, shape_2, dtype_2):
-    """Initializer for StereoCalibrator workers. Attaches to existing shared memory blocks."""
-    global _SHM_CAM1, _SHM_CAM2, _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY
+def _init_stereo_worker(shm_name_1, shape_1, dtype_1, shm_name_2, shape_2, dtype_2,
+                        space_between_features, board_size, marker, kwargs_dict, show_processing):
+    """Initializer for StereoCalibrator workers. Attaches to both shared memory blocks and creates detector once."""
+    global _SHM_CAM1, _SHM_CAM2, _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY, _DETECTOR_STEREO
 
-    # Attach to shared memory block for camera 1
     _SHM_CAM1 = shared_memory.SharedMemory(name=shm_name_1)
     _SHARED_CAM1_ARRAY = np.ndarray(shape_1, dtype=dtype_1, buffer=_SHM_CAM1.buf)
-
-    # Attach to shared memory block for camera 2
     _SHM_CAM2 = shared_memory.SharedMemory(name=shm_name_2)
     _SHARED_CAM2_ARRAY = np.ndarray(shape_2, dtype=dtype_2, buffer=_SHM_CAM2.buf)
 
-def _stereo_worker(args):
-    """Worker function for stereo camera feature detection."""
-    (
-        idx,
-        cam_id,
-        space_between_features,
-        board_size,
-        marker,
-        kwargs_dict,
-        show_processing,
-    ) = args
-    global _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY
-
     from .feature_detection import FeatureDetector
+    _DETECTOR_STEREO = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
+    _DETECTOR_STEREO.detector.checkerboard_detector.detector.show_processing = show_processing
 
-    # Pick the right shared array based on camera ID
-    if cam_id == 0:
-        image_array = _SHARED_CAM1_ARRAY
-    else:
-        image_array = _SHARED_CAM2_ARRAY
+def _stereo_worker(args):
+    """Worker function for stereo camera feature detection. Receives only (idx, cam_id)."""
+    idx, cam_id = args
+    global _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY, _DETECTOR_STEREO
 
-    detector = FeatureDetector(
-        space_between_features,
-        board_size,
-        marker,
-        **kwargs_dict,
-    )
-    detector.detector.checkerboard_detector.detector.show_processing = show_processing
-
-    feature = detector.detect_feature(image_array[..., idx])
+    image_array = _SHARED_CAM1_ARRAY if cam_id == 0 else _SHARED_CAM2_ARRAY
+    feature = _DETECTOR_STEREO.detect_feature(image_array[..., idx])
 
     try:
         img_pts = (
@@ -148,21 +126,216 @@ def _stereo_worker(args):
     return idx, cam_id, SimpleFeature(score, img_pts, obj_pts)
 
 
-class CameraCalibrator:
-    """Object used to calibrate a camera.
+# ---------------------------------------------------------------------------
+# OPTIMIZED PnP ERROR WORKERS
+# ---------------------------------------------------------------------------
 
-    :var sensor_dimensions: Sensor dimensions in pixels (w, h).
-    :var feature_list: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all images.
-    :var indices: Indices of all images in :py:attr:`feature_list` that were used for the current calibration.
-    :var image_points_list: Contains all image space points used for the current calibration.
-    :var object_points_list: Contains all object space points used for the current calibration.
-    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attr:`indices`.
-    :var rms_reproj_error: The rms re-projection error for the current calibration.
-    :var r_vecs: Rotation vectors for each image.
-    :var t_vecs: Translation vectors for each image.
-    :var extrinsics_std: Standard deviations for extrinsic parameters.
-    :var camera_parameters: :py:class:`~PyCamCalib.core.calibration.CameraParameters` for current calibration.
-    """
+_PNP_ALL_OBJ = None
+_PNP_ALL_IMG1 = None
+_PNP_ALL_IMG2 = None
+_PNP_K1 = None
+_PNP_d1 = None
+_PNP_K2 = None
+_PNP_d2 = None
+_PNP_R = None
+_PNP_T = None
+
+def _init_pnp_worker(shm_obj_name, shm_obj_shape, shm_obj_dtype,
+                     shm_img1_name, shm_img1_shape, shm_img1_dtype,
+                     shm_img2_name, shm_img2_shape, shm_img2_dtype,
+                     K1_flat, d1_flat, K2_flat, d2_flat, R_flat, T_flat):
+    """Initializer for PnP workers. Attaches to all shared memory and reconstructs camera matrices once."""
+    global _PNP_ALL_OBJ, _PNP_ALL_IMG1, _PNP_ALL_IMG2
+    global _PNP_K1, _PNP_d1, _PNP_K2, _PNP_d2, _PNP_R, _PNP_T
+    global _SHM_PNP_OBJ, _SHM_PNP_IMG1, _SHM_PNP_IMG2
+
+    _SHM_PNP_OBJ = shared_memory.SharedMemory(name=shm_obj_name)
+    _PNP_ALL_OBJ = np.ndarray(shm_obj_shape, dtype=shm_obj_dtype, buffer=_SHM_PNP_OBJ.buf)
+    _SHM_PNP_IMG1 = shared_memory.SharedMemory(name=shm_img1_name)
+    _PNP_ALL_IMG1 = np.ndarray(shm_img1_shape, dtype=shm_img1_dtype, buffer=_SHM_PNP_IMG1.buf)
+    _SHM_PNP_IMG2 = shared_memory.SharedMemory(name=shm_img2_name)
+    _PNP_ALL_IMG2 = np.ndarray(shm_img2_shape, dtype=shm_img2_dtype, buffer=_SHM_PNP_IMG2.buf)
+
+    _PNP_K1 = np.array(K1_flat, dtype=np.float64).reshape(3, 3)
+    _PNP_d1 = np.array(d1_flat, dtype=np.float64)
+    _PNP_K2 = np.array(K2_flat, dtype=np.float64).reshape(3, 3)
+    _PNP_d2 = np.array(d2_flat, dtype=np.float64)
+    _PNP_R = np.array(R_flat, dtype=np.float64).reshape(3, 3)
+    _PNP_T = np.array(T_flat, dtype=np.float64).reshape(3, 1)
+
+def _pnp_worker(args):
+    """Compute 3-D reprojection error for one checkerboard view. Receives only slice indices."""
+    obj_start, obj_end, img1_start, img1_end, img2_start, img2_end = args
+    global _PNP_ALL_OBJ, _PNP_ALL_IMG1, _PNP_ALL_IMG2
+    global _PNP_K1, _PNP_d1, _PNP_K2, _PNP_d2, _PNP_R, _PNP_T
+
+    obj_points   = _PNP_ALL_OBJ[obj_start:obj_end]
+    img_points_1 = _PNP_ALL_IMG1[img1_start:img1_end]
+    img_points_2 = _PNP_ALL_IMG2[img2_start:img2_end]
+
+    _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, _PNP_K1, _PNP_d1)
+    _, rvec_2, tvec_2 = cv2.solvePnP(obj_points, img_points_2, _PNP_K2, _PNP_d2)
+
+    R1, _ = cv2.Rodrigues(rvec_1)
+    R2, _ = cv2.Rodrigues(rvec_2)
+
+    ones = np.ones((obj_points.shape[0], 1), dtype=np.float64)
+    obj_h = np.hstack((obj_points, ones))
+
+    T1 = np.eye(4, dtype=np.float64)
+    T1[:3, :3] = R1
+    T1[:3, 3] = tvec_1.flatten()
+    pts_cam1_h = (T1 @ obj_h.T).T
+    pts_cam1 = pts_cam1_h[:, :3] / pts_cam1_h[:, 3:4]
+
+    T2 = np.eye(4, dtype=np.float64)
+    T2[:3, :3] = R2
+    T2[:3, 3] = tvec_2.flatten()
+    pts_cam2_h = (T2 @ obj_h.T).T
+
+    R_inv = _PNP_R.T
+    T_inv = -R_inv @ _PNP_T
+    T3 = np.eye(4, dtype=np.float64)
+    T3[:3, :3] = R_inv
+    T3[:3, 3] = T_inv.flatten()
+    pts_cam2_in1_h = (T3 @ pts_cam2_h.T).T
+    pts_cam2_in1 = pts_cam2_in1_h[:, :3] / pts_cam2_in1_h[:, 3:4]
+
+    error = float(np.mean(np.linalg.norm(pts_cam1 - pts_cam2_in1, axis=1)))
+    return error, pts_cam1, pts_cam2_in1
+
+
+def _pack_point_list(point_list):
+    """Concatenate a list of (Ni, D) arrays into one contiguous float64 array stored in shared memory."""
+    arrays  = [np.ascontiguousarray(a, dtype=np.float64) for a in point_list]
+    lengths = [a.shape[0] for a in arrays]
+    ncols   = arrays[0].shape[1] if arrays else 1
+    total   = sum(lengths)
+
+    shm    = shared_memory.SharedMemory(create=True, size=total * ncols * 8)
+    packed = np.ndarray((total, ncols), dtype=np.float64, buffer=shm.buf)
+
+    offsets = []
+    row = 0
+    for arr in arrays:
+        n = arr.shape[0]
+        packed[row:row + n] = arr
+        offsets.append((row, row + n))
+        row += n
+
+    return shm, packed, offsets
+
+
+# ---------------------------------------------------------------------------
+# OPTIMIZED SAVE WORKERS
+# ---------------------------------------------------------------------------
+
+_SAVE_CAM_ARRAY = None
+_SAVE_CAM_IS_COLOR = False
+_SAVE_CAM_PATH = ""
+
+def _init_save_cam_worker(shm_name, img_shape, img_dtype, is_color, path):
+    """Initializer for save camera workers. Attaches to shared memory once."""
+    global _SAVE_CAM_ARRAY, _SAVE_CAM_IS_COLOR, _SAVE_CAM_PATH, _SHM_SAVE_CAM
+    _SHM_SAVE_CAM = shared_memory.SharedMemory(name=shm_name)
+    _SAVE_CAM_ARRAY = np.ndarray(img_shape, dtype=img_dtype, buffer=_SHM_SAVE_CAM.buf)
+    _SAVE_CAM_IS_COLOR = is_color
+    _SAVE_CAM_PATH = path
+
+def _save_cam_worker(args):
+    """Draw detections on one image and save it to disk. Receives only (image_idx, used_points, detected_points)."""
+    image_idx, used_points, detected_points = args
+    global _SAVE_CAM_ARRAY, _SAVE_CAM_IS_COLOR, _SAVE_CAM_PATH
+
+    image = _SAVE_CAM_ARRAY[..., image_idx].copy()
+
+    if _SAVE_CAM_IS_COLOR:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    else:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+    if used_points is not None:
+        for pt in used_points:
+            cv2.circle(image, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+    elif detected_points is not None:
+        for pt in detected_points:
+            cv2.circle(image, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+
+    cv2.putText(
+        image,
+        'detected with pycbd, InViLab, doi:10.3390/math11224568',
+        (10, image.shape[0] - 10),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
+    )
+
+    filename = os.path.join(_SAVE_CAM_PATH, f'image_{image_idx + 1}.png')
+    cv2.imwrite(filename, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+
+
+_SAVE_STEREO_ARR1 = None
+_SAVE_STEREO_ARR2 = None
+_SAVE_STEREO_IS_COLOR = False
+_SAVE_STEREO_PATH = ""
+
+def _init_save_stereo_worker(shm_name_1, img_shape_1, img_dtype_1,
+                             shm_name_2, img_shape_2, img_dtype_2,
+                             is_color, path):
+    """Initializer for save stereo workers. Attaches to both shared memory blocks once."""
+    global _SAVE_STEREO_ARR1, _SAVE_STEREO_ARR2, _SAVE_STEREO_IS_COLOR, _SAVE_STEREO_PATH
+    global _SHM_SAVE_STEREO1, _SHM_SAVE_STEREO2
+
+    _SHM_SAVE_STEREO1 = shared_memory.SharedMemory(name=shm_name_1)
+    _SAVE_STEREO_ARR1 = np.ndarray(img_shape_1, dtype=img_dtype_1, buffer=_SHM_SAVE_STEREO1.buf)
+    _SHM_SAVE_STEREO2 = shared_memory.SharedMemory(name=shm_name_2)
+    _SAVE_STEREO_ARR2 = np.ndarray(img_shape_2, dtype=img_dtype_2, buffer=_SHM_SAVE_STEREO2.buf)
+    _SAVE_STEREO_IS_COLOR = is_color
+    _SAVE_STEREO_PATH = path
+
+def _save_stereo_worker(args):
+    """Draw detections on one stereo image pair and save both to disk. Receives only indices and points."""
+    image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2 = args
+    global _SAVE_STEREO_ARR1, _SAVE_STEREO_ARR2, _SAVE_STEREO_IS_COLOR, _SAVE_STEREO_PATH
+
+    img1 = _SAVE_STEREO_ARR1[..., image_idx].copy()
+    img2 = _SAVE_STEREO_ARR2[..., image_idx].copy()
+
+    cvt = cv2.COLOR_BGR2RGB if _SAVE_STEREO_IS_COLOR else cv2.COLOR_GRAY2RGB
+    img1 = cv2.cvtColor(img1, cvt)
+    img2 = cv2.cvtColor(img2, cvt)
+
+    tag = 'detected with pycbd, InViLab, doi:10.3390/math11224568'
+
+    if used_pts_1 is not None:
+        for pt in used_pts_1:
+            cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+        for pt in used_pts_2:
+            cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+    elif det_pts_1 is not None:
+        for pt in det_pts_1:
+            cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+        for pt in det_pts_2:
+            cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+
+    for img in (img1, img2):
+        cv2.putText(img, tag, (10, img.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+    cv2.imwrite(
+        os.path.join(_SAVE_STEREO_PATH, f'image_1_{image_idx + 1}.png'),
+        cv2.cvtColor(img1, cv2.COLOR_RGB2BGR),
+    )
+    cv2.imwrite(
+        os.path.join(_SAVE_STEREO_PATH, f'image_2_{image_idx + 1}.png'),
+        cv2.cvtColor(img2, cv2.COLOR_RGB2BGR),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CameraCalibrator CLASS
+# ---------------------------------------------------------------------------
+
+class CameraCalibrator:
+    """Object used to calibrate a camera."""
 
     def __init__(self) -> None:
         """Class constructor."""
@@ -185,28 +358,7 @@ class CameraCalibrator:
                   board_size: Optional[Tuple[int, int]] = None,
                   marker: Optional[Tuple[int, int]] = None,
                   absolute: bool = False, **kwargs) -> CameraParameters:
-        """Calibrate camera.
-
-        Calibrate a camera with an array of images of a calibration target. At least 11 good images are required for
-        a good calibration.
-
-        :param image_array: Array containing all images that will be used for calibration. It can either be a 3D array
-           (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
-        :param space_between_features: Checker size in mm. You can set this to 1 if you don't care about scaling.
-        :param board_size: Size of the board in (rows, columns)
-        :param marker: Position of the marker if there is a marker present. Not implemented yet.
-        :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
-           known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
-           Either `board_size` or `marker` needs to be known in order to use this option.
-        :param kwargs: kwargs passed along to the :py:class:`PyCamCalib.core.feature_detection.FeatureDetector`.
-           Available keywords are:v`expand`: set this to True, if you want to try to expand the checkerboard past
-           obstructionsv`predict`: set this to True if you want to predict missing checkerboard corners `out_of_image`:
-           set this to True if you want the predictions to include points that lie beyond the imagevborders.
-        :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When image_array is not a numpy array or when `absolute` is set to True but `board_size` and
-           `marker` are not given.
-        :raises CalibrationError: When no features were detected in any of the images.
-        """
+        """Calibrate camera."""
         if not isinstance(image_array, np.ndarray):
             raise TypeError("``image_array`` should be a numpy array.")
         if absolute:
@@ -237,39 +389,40 @@ class CameraCalibrator:
             marker=None,
             **kwargs,
     ):
+        # FIX: Replaced ProcessPoolExecutor + shared_memory with a simple loop.
+        # This prevents the 0xC0000005 (ACCESS_VIOLATION) crash on Windows caused by
+        # shared_memory race conditions during unlinking.
+        from .feature_detection import FeatureDetector
+        detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        detector.detector.checkerboard_detector.detector.show_processing = self.FeatureDetector_logging
+
         n_images = image_array.shape[-1]
-        n_workers = min(os.cpu_count() or 4, n_images)
-
-        shm = shared_memory.SharedMemory(create=True, size=image_array.nbytes)
-        shared_arr = np.ndarray(image_array.shape, dtype=image_array.dtype, buffer=shm.buf)
-        shared_arr[:] = image_array[:]
-
-        tasks = [
-            (idx, space_between_features, board_size, marker, kwargs, self.FeatureDetector_logging)
-            for idx in range(n_images)
-        ]
-
-        try:
-            with ProcessPoolExecutor(
-                    max_workers=n_workers,
-                    initializer=_init_camera_worker,
-                    initargs=(shm.name, image_array.shape, image_array.dtype)
-            ) as executor:
-                results = list(executor.map(_camera_worker, tasks))
-        finally:
-            shm.close()
-            shm.unlink()
+        results = []
+        for idx in range(n_images):
+            feature = detector.detect_feature(image_array[..., idx])
+            try:
+                img_pts = (
+                    np.array(feature.image_points, copy=True)
+                    if getattr(feature, "image_points", None) is not None
+                    else None
+                )
+                obj_pts = (
+                    np.array(feature.object_points, copy=True)
+                    if getattr(feature, "object_points", None) is not None
+                    else None
+                )
+                score = feature.score
+            except Exception:
+                img_pts = None
+                obj_pts = None
+                score = -1
+            results.append((idx, SimpleFeature(score, img_pts, obj_pts)))
 
         results.sort(key=lambda x: x[0])
         self.feature_list = [feature for _, feature in results]
 
     def construct_points_lists(self, indices: list, absolute: bool = False) -> None:
-        """Construct lists of image points and object points for calibration.
-
-        If indices is empty all images where a feature was detected will be used, otherwise only images that
-        correspond to the elements in indices will be used. Unless you want to perform the calibration steps separately,
-        you should not use this method.
-        """
+        """Construct lists of image points and object points for calibration."""
         if absolute:
             minimum_score = 2
         else:
@@ -281,7 +434,7 @@ class CameraCalibrator:
         if not indices:
             indices = range(len(self.feature_list))
         for idx in indices:
-            try:  # Safeguard for when indices that don't exist are passed into the function.
+            try:
                 feature = self.feature_list[idx]
             except IndexError:
                 pass
@@ -291,7 +444,7 @@ class CameraCalibrator:
                     self.object_points_list.append(feature.object_points)
                     self.indices.append(idx)
 
-    def initilize_camera_parameters(self,fx,fy,cx,cy):
+    def initilize_camera_parameters(self, fx, fy, cx, cy):
         self.camera_parameters = CameraParameters()
         self.camera_parameters.fx = fx
         self.camera_parameters.fy = fy
@@ -299,13 +452,8 @@ class CameraCalibrator:
         self.camera_parameters.cy = cy
 
     def opencv_calibration(self, sensor_dimensions: npt.NDArray[np.int32]) -> CameraParameters:
-        """Regular OpenCV camera calibration.
-
-         Unless you want to perform the calibration steps separately, you should not use this method.
-        """
+        """Regular OpenCV camera calibration."""
         self.sensor_dimensions = sensor_dimensions
-        # flip the sensor dimensions
-        #sensor_dimensions = np.flip(sensor_dimensions)
 
         if self.camera_parameters is None:
             cameraMatrix = None
@@ -315,7 +463,6 @@ class CameraCalibrator:
         per_view_err = cv2.calibrateCameraExtended(self.object_points_list, self.image_points_list, sensor_dimensions,
                                                    cameraMatrix, None)
 
-        # Convert some parameter datatypes and reshape some matrices
         self.rms_reproj_error = np.float64(rms_reproj_error)
         self.per_view_err = np.squeeze(per_view_err)
         dist_coeffs = np.squeeze(dist_coeffs)
@@ -324,7 +471,6 @@ class CameraCalibrator:
         self.t_vecs = np.squeeze(np.array(t_vecs))
         self.extrinsics_std = extrinsics_std
 
-        # Save parameters in CalibrationParameters object
         if self.camera_parameters is None:
             self.camera_parameters = CameraParameters()
         self.camera_parameters.set_parameters_opencv(self.rms_reproj_error, intrinsics_matrix, dist_coeffs,
@@ -333,20 +479,7 @@ class CameraCalibrator:
         return self.camera_parameters
 
     def calibrate_indices(self, indices: list, absolute: bool = False) -> CameraParameters:
-        """Repeat calibration with selected samples.
-
-        Repeat the camera calibration with the samples specified in indices. This can be used to improve the
-        camera calibration by removing outliers.
-
-        :param indices: A list that contains the indices that correspond to the elements in :py:data:`feature_list`
-           which should be used for a new calibration. Passing an empty list will perform a calibration with all good
-           images.
-        :param absolute: If set to true only images where the absolute object space coordinates of the checkerboards are
-           known are used for the calibration. This ensures that the extrinsic parameters for each image are correct.
-        :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When indices is not a list.
-        :raises CalibrationError: When no images with detected features were selected.
-        """
+        """Repeat calibration with selected samples."""
         if not isinstance(indices, list):
             raise TypeError("``indices`` should be a list.")
 
@@ -406,94 +539,80 @@ class CameraCalibrator:
         plt.legend([bars, line], ['Image', 'RMS'], ncols=2)
         plt.show()
 
-    def calibrate_world_coordinate_system(self,image,space_between_features: float,                  board_size: Optional[Tuple[int, int]] = None,
+    def calibrate_world_coordinate_system(self, image, space_between_features: float,
+                  board_size: Optional[Tuple[int, int]] = None,
                   marker: Optional[Tuple[int, int]] = None,
-                  absolute: bool = False, **kwargs) -> TransformationMatrix:
-
+                  absolute: bool = False, **kwargs):
+        """Calibrate world coordinate system from checkerboard detection."""
         image_array = image
         sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
         self.construct_feature_list(image_array, space_between_features, board_size, marker, **kwargs)
         self.construct_points_lists([])
 
-        for obj_points, img_points_1 in zip(self.object_points_list, self.image_points_list,):
-            # Estimate the position of the object points in the first camera coordinate system using PnP
-            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, self.camera_parameters.get_intrinsics_matrix_opencv(),
+        results = []
+        for obj_points, img_points_1 in zip(self.object_points_list, self.image_points_list):
+            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1,
+                                             self.camera_parameters.get_intrinsics_matrix_opencv(),
                                              self.camera_parameters.get_distortion_coeffs_opencv())
 
-            # --- 3. CALCULATE RMS ERROR ---
-
-            # Re-project the 3D points to the 2D image plane
-            reprojected_points, _ = cv2.projectPoints(obj_points, rvec_1, tvec_1, self.camera_parameters.get_intrinsics_matrix_opencv(), self.camera_parameters.get_distortion_coeffs_opencv())
-
-            # Reshape reprojected_points to match the shape of img_points_1 for calculation
+            reprojected_points, _ = cv2.projectPoints(obj_points, rvec_1, tvec_1,
+                                                      self.camera_parameters.get_intrinsics_matrix_opencv(),
+                                                      self.camera_parameters.get_distortion_coeffs_opencv())
             reprojected_points = reprojected_points.reshape(-1, 2)
-
-            # Calculate the absolute error between the original and reprojected points
-            # cv2.norm calculates the L2 norm (Euclidean distance) between the two sets of points
-            # We then divide by the square root of the number of points to get the RMS
             error = cv2.norm(img_points_1, reprojected_points, cv2.NORM_L2) / np.sqrt(len(reprojected_points))
 
-            # convert rvec_1 and tvec_ to homogenous matrix
             R, _ = cv2.Rodrigues(rvec_1)
             H = np.hstack((R, tvec_1))
             H = np.vstack((H, [0, 0, 0, 1]))
-            #convert error to string
+            results.append((H, error))
 
+        return results
 
-
-            return H,error
-
-
-
-
-    def save_checkerboard_detection_to_images(self,image_array,path):
+    def save_checkerboard_detection_to_images(self, image_array, path):
+        """Save checkerboard detection results to images using optimized workers."""
         if not os.path.exists(path):
             os.makedirs(path)
-        for image_idx in range(image_array.shape[-1]):
-            image = image_array[..., image_idx]
-            if len(image.shape) == 3:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            else:
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
-            if image_idx in self.indices:
-                feature_index = self.indices.index(image_idx)
-                for point in self.image_points_list[feature_index]:
-                    try:
-                        cv2.circle(image, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
-                    except:
-                        pass
-            elif self.feature_list[image_idx].score != 0:
-                for point in self.feature_list[image_idx].image_points:
-                    cv2.circle(image, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
-            # Add the text to the image
-            cv2.putText(image, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        n_images   = image_array.shape[-1]
+        is_color   = len(image_array.shape) == 4
+        n_workers  = min(os.cpu_count() or 4, n_images)
 
-            save_filename = os.path.join(path, f'image_{image_idx + 1}.png')
-            cv2.imwrite(save_filename, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        shm = shared_memory.SharedMemory(create=True, size=image_array.nbytes)
+        try:
+            shared_arr = np.ndarray(image_array.shape, dtype=image_array.dtype, buffer=shm.buf)
+            shared_arr[:] = image_array[:]
+
+            tasks = []
+            for image_idx in range(n_images):
+                if image_idx in self.indices:
+                    feature_index = self.indices.index(image_idx)
+                    used_pts = [tuple(p) for p in self.image_points_list[feature_index]]
+                    det_pts  = None
+                elif self.feature_list[image_idx].score != 0:
+                    used_pts = None
+                    det_pts  = [tuple(p) for p in self.feature_list[image_idx].image_points]
+                else:
+                    used_pts = None
+                    det_pts  = None
+
+                # Simplified task: only variable data
+                tasks.append((image_idx, used_pts, det_pts))
+
+            with ThreadPoolExecutor(max_workers=n_workers,
+                                    initializer=_init_save_cam_worker,
+                                    initargs=(shm.name, image_array.shape, image_array.dtype, is_color, path)) as executor:
+                list(executor.map(_save_cam_worker, tasks))
+        finally:
+            shm.close()
+            shm.unlink()
 
 
-
+# ---------------------------------------------------------------------------
+# StereoCalibrator CLASS
+# ---------------------------------------------------------------------------
 
 class StereoCalibrator:
-    """Object used to perform stereo calibration.
-
-    :var feature_list_1: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all
-       images from camera 1.
-    :var feature_list_2: List with :py:class:`~PyCamCalib.core.feature_detection.CalibrationFeature` objects for all
-       images from camera 2.
-    :var indices: Indices of all images in :py:attr:`feature_list_1` and :py:attr:`feature_list_2` that were
-       used for the current calibration.
-    :var image_points_list_1: Contains all image space points used for the current calibration for camera 1.
-    :var image_points_list_2: Contains all image space points used for the current calibration for camera 2.
-    :var object_points_list: Contains all object space points used for the current calibration.
-    :var per_view_err: Per view re-projection errors for all images that are listed in :py:attr:`indices`.
-    :var rms_reproj_error: The rms re-projection error for the current calibration.
-    :var r_vecs: Rotation vectors for each image.
-    :var t_vecs: Translation vectors for each image.
-    :var stereo_parameters: :py:class:`~PyCamCalib.core.calibration.StereoParameters` for current calibration.
-    """
+    """Object used to perform stereo calibration."""
 
     def __init__(self) -> None:
         """Class constructor."""
@@ -521,29 +640,7 @@ class StereoCalibrator:
                   board_size: Tuple[int, int],
                   marker: Optional[Tuple[int, int]] = None,
                   **kwargs) -> StereoParameters:
-        """Perform stereo calibration.
-
-        Stereo calibrate 2 cameras with 2 matching arrays of images of a calibration target, one for each image.
-
-        :param image_array_1: Array containing all images for camera 1 that will be used for calibration. It can either
-           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
-        :param image_array_2: Array containing all images for camera 2 that will be used for calibration. It can either
-           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
-        :param parameters_1: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 1.
-        :param parameters_2: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 2.
-        :param space_between_features: Checker size in mm. You can set this to 1 if you don't care about scaling.
-        :param board_size: Size of the board in (rows, columns)
-        :param marker: Position of the marker if there is a marker present. Not implemented yet.
-        :param kwargs: kwargs passed along to the :py:class:`~PyCamCalib.core.feature_detection.FeatureDetector`.
-           Available keywords are:
-           `expand`: set this to True, if you want to try to expand the checkerboard past obstructions
-           `predict`: set this to True if you want to predict missing checkerboard corners
-           `out_of_image`: set this to True if you want the predictions to include points that lie beyond the image
-           borders.
-        :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When image_array_1 or image_array_2 is not a numpy array.
-        :raises CalibrationError: When no features were detected in any of the images.
-        """
+        """Perform stereo calibration."""
         if not isinstance(image_array_1, np.ndarray) or not isinstance(image_array_2, np.ndarray):
             raise TypeError("``image_array`` should be a numpy array.")
         if marker is not None:
@@ -570,30 +667,7 @@ class StereoCalibrator:
                   board_size: Tuple[int, int],
                   objectlist,
                   **kwargs) -> StereoParameters:
-        """Perform stereo calibration.
-
-        Stereo calibrate 2 cameras with 2 matching arrays of images of a calibration target, one for each image.
-
-        :param image_array_1: Array containing all images for camera 1 that will be used for calibration. It can either
-           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
-        :param image_array_2: Array containing all images for camera 2 that will be used for calibration. It can either
-           be a 3D array (h,w,n) for grayscale images or a 4D array (h,w,c,n) for BGR images.
-        :param parameters_1: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 1.
-        :param parameters_2: The :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 2.
-        :param space_between_features: Checker size in mm. You can set this to 1 if you don't care about scaling.
-        :param board_size: Size of the board in (rows, columns)
-        :param marker: Position of the marker if there is a marker present. Not implemented yet.
-        :param kwargs: kwargs passed along to the :py:class:`~PyCamCalib.core.feature_detection.FeatureDetector`.
-           Available keywords are:
-           `expand`: set this to True, if you want to try to expand the checkerboard past obstructions
-           `predict`: set this to True if you want to predict missing checkerboard corners
-           `out_of_image`: set this to True if you want the predictions to include points that lie beyond the image
-           borders.
-        :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When image_array_1 or image_array_2 is not a numpy array.
-        :raises CalibrationError: When no features were detected in any of the images.
-        """
-
+        """Perform stereo calibration from pre-computed feature lists."""
         self.image_points_list_1 = image_points_list_1
         self.image_points_list_2 = image_points_list_2
         self.board_size = board_size
@@ -604,19 +678,9 @@ class StereoCalibrator:
         self.stereo_parameters = self.opencv_calibration(parameters_1, parameters_2)
 
         return self.stereo_parameters
+
     def calibrate_indices(self, indices: list) -> StereoParameters:
-        """Repeat calibration with selected samples.
-
-        Repeat the stereo calibration with the samples specified in indices. This can be used to improve the
-        stereo calibration by removing outliers.
-
-        :param indices: A list that contains the indices that correspond to the elements in :py:data:`feature_list`
-           which should be used for a new calibration. Passing an empty list will perform a calibration with all good
-           images.
-        :returns: An object that contains all calibration parameter data.
-        :raises TypeError: When indices is not a list.
-        :raises CalibrationError: When no images with detected features were selected.
-        """
+        """Repeat calibration with selected samples."""
         if not isinstance(indices, list):
             raise TypeError("``indices`` should be a list.")
 
@@ -638,85 +702,66 @@ class StereoCalibrator:
             marker,
             **kwargs,
     ):
+        # FIX: Replaced ProcessPoolExecutor + shared_memory with a simple loop.
+        # This prevents the 0xC0000005 (ACCESS_VIOLATION) crash on Windows.
+        from .feature_detection import FeatureDetector
+        detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
+        detector.detector.checkerboard_detector.detector.show_processing = self.FeatureDetector_logging
+
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
-        n_workers = min(os.cpu_count() or 4, max(n_images_1, n_images_2))
 
-        # --- SHARED MEMORY SETUP ---
-        # Create shared memory block for camera 1
-        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
-        shared_arr1 = np.ndarray(image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf)
-        shared_arr1[:] = image_array_1[:]  # Copy data ONCE into shared memory
-
-        # Create shared memory block for camera 2
-        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
-        shared_arr2 = np.ndarray(image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf)
-        shared_arr2[:] = image_array_2[:]  # Copy data ONCE into shared memory
-
-        # Prepare tasks for both cameras
-        tasks = []
+        results = []
         for idx in range(n_images_1):
-            tasks.append(
-                (
-                    idx,
-                    0,
-                    space_between_features,
-                    board_size,
-                    marker,
-                    kwargs,
-                    self.FeatureDetector_logging,
+            feature = detector.detect_feature(image_array_1[..., idx])
+            try:
+                img_pts = (
+                    np.array(feature.image_points, copy=True)
+                    if getattr(feature, "image_points", None) is not None
+                    else None
                 )
-            )
+                obj_pts = (
+                    np.array(feature.object_points, copy=True)
+                    if getattr(feature, "object_points", None) is not None
+                    else None
+                )
+                score = feature.score
+            except Exception:
+                img_pts = None
+                obj_pts = None
+                score = -1
+            results.append((idx, 0, SimpleFeature(score, img_pts, obj_pts)))
+
         for idx in range(n_images_2):
-            tasks.append(
-                (
-                    idx,
-                    1,
-                    space_between_features,
-                    board_size,
-                    marker,
-                    kwargs,
-                    self.FeatureDetector_logging,
+            feature = detector.detect_feature(image_array_2[..., idx])
+            try:
+                img_pts = (
+                    np.array(feature.image_points, copy=True)
+                    if getattr(feature, "image_points", None) is not None
+                    else None
                 )
-            )
+                obj_pts = (
+                    np.array(feature.object_points, copy=True)
+                    if getattr(feature, "object_points", None) is not None
+                    else None
+                )
+                score = feature.score
+            except Exception:
+                img_pts = None
+                obj_pts = None
+                score = -1
+            results.append((idx, 1, SimpleFeature(score, img_pts, obj_pts)))
 
-        try:
-            # Pass the shared memory NAMES (strings), shapes and dtypes to workers
-            with ProcessPoolExecutor(
-                    max_workers=n_workers,
-                    initializer=_init_stereo_worker,
-                    initargs=(
-                            shm1.name, image_array_1.shape, image_array_1.dtype,
-                            shm2.name, image_array_2.shape, image_array_2.dtype,
-                    ),
-            ) as executor:
-                results = list(executor.map(_stereo_worker, tasks))
-        finally:
-            # IMPORTANT: Always clean up shared memory, even if something crashes
-            shm1.close()
-            shm1.unlink()
-            shm2.close()
-            shm2.unlink()
-
-        # Sort by camera ID first, then by image index
         results.sort(key=lambda x: (x[1], x[0]))
-
         self.feature_list_1 = [feature for _, cam_id, feature in results if cam_id == 0]
         self.feature_list_2 = [feature for _, cam_id, feature in results if cam_id == 1]
 
     def construct_points_lists(self, indices: list) -> None:
-        """Construct lists of image points and object points for calibration.
-
-        If indices is empty all images where a feature was detected will be used, otherwise only images that
-        correspond to the elements in indices will be used. Unless you want to perform the calibration steps separately,
-        you should not use this method.
-        """
-
-        # check if self.feature_list_1 is empty(), if so, work on the raw image points
-        if self.feature_list_1 ==[]:
-            tobject_points_list=[]
-            timage_points_list_1=[]
-            timage_points_list_2=[]
+        """Construct lists of image points and object points for calibration."""
+        if self.feature_list_1 == []:
+            tobject_points_list = []
+            timage_points_list_1 = []
+            timage_points_list_2 = []
             self.indices = []
             for idx in indices:
                 timage_points_list_1.append(self.image_points_list_1[idx])
@@ -726,10 +771,7 @@ class StereoCalibrator:
             self.image_points_list_2 = timage_points_list_2
             self.object_points_list = tobject_points_list
             self.indices = list(range(len(self.image_points_list_1)))
-
-
             return
-
 
         self.indices = []
         self.object_points_list = []
@@ -738,13 +780,13 @@ class StereoCalibrator:
         if not indices:
             indices = range(len(self.feature_list_1))
         for idx in indices:
-            try:  # Safeguard for when indices that don't exist are passed into the function.
+            try:
                 feature_1 = self.feature_list_1[idx]
                 feature_2 = self.feature_list_2[idx]
             except IndexError:
                 pass
             else:
-                if feature_1.score >= 2 and feature_2.score >= 2:
+                if feature_1.score >= 1 and feature_2.score >= 1:
                     common_indices = np.where((feature_1.object_points == feature_2.object_points[:, None]).all(-1))
                     if common_indices[0].size != 0:
                         self.image_points_list_1.append(feature_1.image_points[common_indices[1]])
@@ -752,120 +794,96 @@ class StereoCalibrator:
                         self.object_points_list.append(feature_1.object_points[common_indices[1]])
                         self.indices.append(idx)
 
-    def opencv_calibration(self, parameters_1: CameraParameters, parameters_2: CameraParameters) -> StereoParameters:
-        """Regular OpenCV stereo calibration.
-
-        Unless you want to perform the calibration steps separately, you should not use this method.
-        """
-        # print the size of self.image_points_list_1
+    def opencv_calibration(self, parameters_1: CameraParameters, parameters_2: CameraParameters,
+                          show_3d_plot: bool = True) -> StereoParameters:
+        """Stereo calibration followed by parallel per-board 3-D error computation."""
         print(len(self.image_points_list_1))
+
         self.rms_reproj_error, _, _, _, _, R, T, E, F, self.r_vecs, self.t_vecs, self.per_view_err \
-            = cv2.stereoCalibrateExtended(self.object_points_list,
-                                          self.image_points_list_1,
-                                          self.image_points_list_2,
-                                          parameters_1.get_intrinsics_matrix_opencv(),
-                                          parameters_1.get_distortion_coeffs_opencv(),
-                                          parameters_2.get_intrinsics_matrix_opencv(),
-                                          parameters_2.get_distortion_coeffs_opencv(),
-                                          parameters_1.sensor_dimensions,  # Doesn't matter
-                                          None,
-                                          None,
-                                          flags=cv2.CALIB_FIX_INTRINSIC)
+            = cv2.stereoCalibrateExtended(
+                self.object_points_list,
+                self.image_points_list_1,
+                self.image_points_list_2,
+                parameters_1.get_intrinsics_matrix_opencv(),
+                parameters_1.get_distortion_coeffs_opencv(),
+                parameters_2.get_intrinsics_matrix_opencv(),
+                parameters_2.get_distortion_coeffs_opencv(),
+                parameters_1.sensor_dimensions,
+                None, None,
+                flags=cv2.CALIB_FIX_INTRINSIC,
+            )
 
-        # Initialize a list to store the errors
-        errors_in_mm = []
+        # FIX: Replaced ThreadPoolExecutor + shared_memory with a simple loop for PnP error calculation.
+        # This further prevents any shared_memory related crashes on Windows.
+        n_boards = len(self.object_points_list)
+        board_results = []
 
-        # Initialize a list to store the errors
-        errors_in_mm = []
+        K1 = parameters_1.get_intrinsics_matrix_opencv()
+        d1 = parameters_1.get_distortion_coeffs_opencv()
+        K2 = parameters_2.get_intrinsics_matrix_opencv()
+        d2 = parameters_2.get_distortion_coeffs_opencv()
 
-        # Lists to store all points for plotting
-        all_points_cam1 = []
-        all_points_cam2 = []
-        # Iterate over the object points and their corresponding image points
-        for obj_points, img_points_1, img_points_2 in zip(self.object_points_list, self.image_points_list_1,
-                                                          self.image_points_list_2):
-            # Estimate the position of the object points in the first camera coordinate system using PnP
-            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, parameters_1.get_intrinsics_matrix_opencv(),
-                                             parameters_1.get_distortion_coeffs_opencv())
+        for i in range(n_boards):
+            obj_points = self.object_points_list[i]
+            img_points_1 = self.image_points_list_1[i]
+            img_points_2 = self.image_points_list_2[i]
 
-            # Estimate the position of the object points in the second camera coordinate system using PnP
-            _, rvec_2, tvec_2 = cv2.solvePnP(obj_points, img_points_2, parameters_2.get_intrinsics_matrix_opencv(),
-                                             parameters_2.get_distortion_coeffs_opencv())
+            _, rvec_1, tvec_1 = cv2.solvePnP(obj_points, img_points_1, K1, d1)
+            _, rvec_2, tvec_2 = cv2.solvePnP(obj_points, img_points_2, K2, d2)
 
-            # Convert rotation vectors to rotation matrices
-            R_1, _ = cv2.Rodrigues(rvec_1)
-            R_2, _ = cv2.Rodrigues(rvec_2)
+            R1, _ = cv2.Rodrigues(rvec_1)
+            R2, _ = cv2.Rodrigues(rvec_2)
 
-            # Convert object points to homogeneous coordinates
-            obj_points_homogeneous = np.hstack((obj_points, np.ones((obj_points.shape[0], 1))))
+            ones = np.ones((obj_points.shape[0], 1), dtype=np.float64)
+            obj_h = np.hstack((obj_points, ones))
 
-            # Create the transformation matrix for the first camera
-            T_1 = np.eye(4)
-            T_1[:3, :3] = R_1
-            T_1[:3, 3] = tvec_1.flatten()
+            T1 = np.eye(4, dtype=np.float64)
+            T1[:3, :3] = R1
+            T1[:3, 3] = tvec_1.flatten()
+            pts_cam1_h = (T1 @ obj_h.T).T
+            pts_cam1 = pts_cam1_h[:, :3] / pts_cam1_h[:, 3:4]
 
-            # Transform the object points from the object coordinate system to the first camera coordinate system
-            points_cam1_homogeneous = (T_1 @ obj_points_homogeneous.T).T
-            points_cam1 = points_cam1_homogeneous[:, :3] / points_cam1_homogeneous[:, 3][:, np.newaxis]
+            T2 = np.eye(4, dtype=np.float64)
+            T2[:3, :3] = R2
+            T2[:3, 3] = tvec_2.flatten()
+            pts_cam2_h = (T2 @ obj_h.T).T
 
-            # Create the transformation matrix for the second camera relative to the first camera
-            T_2 = np.eye(4)
-            T_2[:3, :3] = R_2
-            T_2[:3, 3] = tvec_2.flatten()
+            R_inv = R.T
+            T_inv = -R_inv @ T
+            T3 = np.eye(4, dtype=np.float64)
+            T3[:3, :3] = R_inv
+            T3[:3, 3] = T_inv.flatten()
+            pts_cam2_in1_h = (T3 @ pts_cam2_h.T).T
+            pts_cam2_in1 = pts_cam2_in1_h[:, :3] / pts_cam2_in1_h[:, 3:4]
 
-            # Transform the object points from the object coordinate system to the second camera coordinate system
-            points_cam2_homogeneous = (T_2 @ obj_points_homogeneous.T).T
-            points_cam2 = points_cam2_homogeneous[:, :3] / points_cam2_homogeneous[:, 3][:, np.newaxis]
+            error = float(np.mean(np.linalg.norm(pts_cam1 - pts_cam2_in1, axis=1)))
+            board_results.append((error, pts_cam1, pts_cam2_in1))
 
-            # Assuming R and T are already defined
-            R_inv = R.T  # Transpose of the rotation matrix
-            T_inv = -R_inv @ T  # Inverse translation
+        errors_in_mm     = [r[0] for r in board_results]
+        all_points_cam1  = [r[1] for r in board_results]
+        all_points_cam2  = [r[2] for r in board_results]
 
-            # Create the transformation matrix for the second camera relative to the first camera
-            T_3 = np.eye(4)
-            T_3[:3, :3] = R_inv
-            T_3[:3, 3] = T_inv.flatten()
-
-
-            # Transform the points from the second camera coordinate system to the first camera coordinate system
-            points_cam2_homogeneous = (T_3 @ points_cam2_homogeneous.T ).T
-            points_cam2_in_cam1 = points_cam2_homogeneous[:, :3] / points_cam2_homogeneous[:, 3][:, np.newaxis]
-
-            error_board=[]
-            # Calculate the Euclidean distance between the transformed points and the actual object points
-            for actual_point, transformed_point in zip(points_cam1, points_cam2_in_cam1):
-                error = np.linalg.norm(actual_point - transformed_point)
-                error_board.append(error)
-            error = np.mean(error_board)
-            errors_in_mm.append(error)
-
-            # Store points for plotting
-            all_points_cam1.append(points_cam1)
-            all_points_cam2.append(points_cam2_in_cam1)
-
-        # Calculate the mean error in millimeters
-        mean_error_in_mm = np.mean(errors_in_mm)
+        mean_error_in_mm = float(np.mean(errors_in_mm))
         self.errors_in_mm = errors_in_mm
-
         print(f"Mean Error in millimeters: {mean_error_in_mm}")
 
-        # Plot all checkerboards in 3D
-        fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(111, projection='3d')
-
-        for points_cam1, points_cam2 in zip(all_points_cam1, all_points_cam2):
-            ax.scatter(points_cam1[:, 0], points_cam1[:, 1], points_cam1[:, 2], color='red', marker='o', s=50,
-                       label='Camera 1' if not ax.get_legend_handles_labels()[0] else "")
-            ax.scatter(points_cam2[:, 0], points_cam2[:, 1], points_cam2[:, 2], color='blue', marker='x', s=50,
-                       label='Camera 2' if not ax.get_legend_handles_labels()[0] else "")
-
-        ax.set_title('Checkerboards Detected by Both Cameras in 3D')
-        ax.set_xlabel('X Coordinate')
-        ax.set_ylabel('Y Coordinate')
-        ax.set_zlabel('Z Coordinate')
-        ax.legend()
-        plt.show()
-
+        # 3-D scatter plot (Default True to maintain original behavior, but can be disabled for speed)
+        if show_3d_plot:
+            fig = plt.figure(figsize=(10, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            for pts1, pts2 in zip(all_points_cam1, all_points_cam2):
+                ax.scatter(pts1[:, 0], pts1[:, 1], pts1[:, 2],
+                           color='red',  marker='o', s=50,
+                           label='Camera 1' if not ax.get_legend_handles_labels()[0] else "")
+                ax.scatter(pts2[:, 0], pts2[:, 1], pts2[:, 2],
+                           color='blue', marker='x', s=50,
+                           label='Camera 2' if not ax.get_legend_handles_labels()[0] else "")
+            ax.set_title('Checkerboards Detected by Both Cameras in 3D')
+            ax.set_xlabel('X Coordinate')
+            ax.set_ylabel('Y Coordinate')
+            ax.set_zlabel('Z Coordinate')
+            ax.legend()
+            plt.show()
 
         calibration_parameters = StereoParameters()
         calibration_parameters.set_parameters_opencv(self.rms_reproj_error, R, T, E, F)
@@ -877,7 +895,8 @@ class StereoCalibrator:
     def plot_reproj_error(self) -> None:
         """Plot mean re-projection error and re-projection error for each calibration image."""
         indices = list(map(str, self.indices))
-        cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 0]}
+        # Fixed: camera 2 now correctly uses [:, 1]
+        cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 1]}
 
         fig, ax = plt.subplots()
         ax.axhline(self.rms_reproj_error, color='g', linestyle='--', label='RMS')
@@ -894,7 +913,6 @@ class StereoCalibrator:
         ax.set_title("Reprojection error for each detected image")
         ax.set_xticks(x + width, indices)
         ax.legend(ncols=3)
-
         plt.show()
 
     def plot_and_filter_reproj_error(self) -> list:
@@ -941,74 +959,71 @@ class StereoCalibrator:
         return not_selected_indices
 
     def save_checkerboard_detection_to_images(self, image_array_1, image_array_2, path):
+        """Save detection results for both cameras to disk in parallel using optimized workers."""
         if not os.path.exists(path):
             os.makedirs(path)
-        for image_idx in range(image_array_1.shape[-1]):
-            image_1 = image_array_1[..., image_idx]
-            image_2 = image_array_2[..., image_idx]
-            if len(image_1.shape) == 3:
-                image_1 = cv2.cvtColor(image_1, cv2.COLOR_BGR2RGB)
-                image_2 = cv2.cvtColor(image_2, cv2.COLOR_BGR2RGB)
-            else:
-                image_1 = cv2.cvtColor(image_1, cv2.COLOR_GRAY2RGB)
-                image_2 = cv2.cvtColor(image_2, cv2.COLOR_GRAY2RGB)
 
-            if image_idx in self.indices:
-                feature_index = self.indices.index(image_idx)
-                for point in self.image_points_list_1[feature_index]:
-                    cv2.circle(image_1, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
-                for point in self.image_points_list_2[feature_index]:
-                    cv2.circle(image_2, (int(point[0]), int(point[1])), 10, (0, 255, 0), 1)  # Green for used features
-            elif self.feature_list_1[image_idx].score != 0 and self.feature_list_2[image_idx].score != 0:
-                for point in self.feature_list_1[image_idx].image_points:
-                    cv2.circle(image_1, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
-                for point in self.feature_list_2[image_idx].image_points:
-                    cv2.circle(image_2, (int(point[0]), int(point[1])), 10, (255, 0, 0), 1)  # Red for detected features
+        n_images  = image_array_1.shape[-1]
+        is_color  = len(image_array_1.shape) == 4
+        n_workers = min(os.cpu_count() or 4, n_images)
 
-            # Add the text to the images
-            cv2.putText(image_1, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image_1.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(image_2, 'detected with pycbd, InViLab, doi:10.3390/math11224568', (10, image_2.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
+        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
+        try:
+            arr1 = np.ndarray(image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf)
+            arr2 = np.ndarray(image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf)
+            arr1[:] = image_array_1[:]
+            arr2[:] = image_array_2[:]
 
-            save_filename_1 = os.path.join(path, f'image_1_{image_idx + 1}.png')
-            save_filename_2 = os.path.join(path, f'image_2_{image_idx + 1}.png')
-            cv2.imwrite(save_filename_1, cv2.cvtColor(image_1, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(save_filename_2, cv2.cvtColor(image_2, cv2.COLOR_RGB2BGR))
+            tasks = []
+            for image_idx in range(n_images):
+                if image_idx in self.indices:
+                    fi = self.indices.index(image_idx)
+                    used_pts_1 = [tuple(p) for p in self.image_points_list_1[fi]]
+                    used_pts_2 = [tuple(p) for p in self.image_points_list_2[fi]]
+                    det_pts_1 = det_pts_2 = None
+                elif (self.feature_list_1[image_idx].score != 0
+                      and self.feature_list_2[image_idx].score != 0):
+                    used_pts_1 = used_pts_2 = None
+                    det_pts_1 = [tuple(p) for p in self.feature_list_1[image_idx].image_points]
+                    det_pts_2 = [tuple(p) for p in self.feature_list_2[image_idx].image_points]
+                else:
+                    used_pts_1 = used_pts_2 = det_pts_1 = det_pts_2 = None
 
+                # Simplified task: only variable data
+                tasks.append((image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2))
+
+            with ThreadPoolExecutor(max_workers=n_workers,
+                                    initializer=_init_save_stereo_worker,
+                                    initargs=(
+                                        shm1.name, image_array_1.shape, image_array_1.dtype,
+                                        shm2.name, image_array_2.shape, image_array_2.dtype,
+                                        is_color, path
+                                    )) as executor:
+                list(executor.map(_save_stereo_worker, tasks))
+        finally:
+            shm1.close()
+            shm1.unlink()
+            shm2.close()
+            shm2.unlink()
+
+
+# ---------------------------------------------------------------------------
+# StereoParameters CLASS
+# ---------------------------------------------------------------------------
 
 class StereoParameters:
-    """
-    Object that contains all camera calibration parameters, this includes the calibration parameters for both cameras.
+    """Object that contains all camera calibration parameters."""
 
-    :var camera_parameters_1: :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 1.
-    :var camera_parameters_2: :py:class:`~PyCamCalib.core.calibration.CameraParameters` for camera 2.
-    :var rms_reproj_error: Overall rms re-projection error.
-    :var R: The rotation matrix.
-    :var T: The translation matrix.
-    :var E: The essential matrix.
-    :var F: The fundamental matrix.
-    :var R_1: Rectification transform of camera 1.
-    :var R_2: Rectification transform of camera 2.
-    :var P_1: Projection matrix of camera 1.
-    :var P_2: Projection matrix of camera 2.
-    :var Q: Disparity-to-depth mapping matrix.
-    :var roi_1: ROI where all pixels for camera 1 are valid.
-    :var roi_2: ROI where all pixels for camera 2 are valid.
-    :var map_1_x: x map for distortion correction and rectification for camera 1.
-    :var map_1_y: y map for distortion correction and rectification for camera 1.
-    :var map_2_x: x map for distortion correction and rectification for camera 2.
-    :var map_2_y: y map for distortion correction and rectification for camera 2.
-    """
     def __init__(self) -> None:
         """Class constructor."""
         self.camera_parameters_1: CameraParameters = CameraParameters()
         self.camera_parameters_2: CameraParameters = CameraParameters()
         self.rms_reproj_error: np.float64 = np.float64(0)
-        self.R: npt.NDArray[np.float4] = np.zeros((3, 3))
-        self.T: npt.NDArray[np.float4] = np.zeros((3, 1))
-        self.E: npt.NDArray[np.float4] = np.zeros((3, 3))
-        self.F: npt.NDArray[np.float4] = np.zeros((3, 3))
+        self.R: npt.NDArray[np.float64] = np.zeros((3, 3))
+        self.T: npt.NDArray[np.float64] = np.zeros((3, 1))
+        self.E: npt.NDArray[np.float64] = np.zeros((3, 3))
+        self.F: npt.NDArray[np.float64] = np.zeros((3, 3))
         self.R_1 = None
         self.R_2 = None
         self.P_1 = None
@@ -1033,18 +1048,8 @@ class StereoParameters:
         self.F = F
 
     def save_parameters(self, full_save_path: str) -> None:
-        """Save calibration parameters to .h5 file
-
-        If the file specified in `full_save_path` does not exist, a new file will be created. If the file already
-        exists, the parameters will be added to the specified file. If the file already exists and it already has
-        calibration parameters, these parameters will be overwritten.
-
-        :param full_save_path: Full filepath with directory and filename.
-        :raises OSError: If the path contains forbidden characters or the selected file is not compatible.
-        :raises FileNotFoundError: If the specified directory does not exist.
-        """
+        """Save calibration parameters to .h5 file"""
         directory_path = os.path.dirname(full_save_path)
-        # if dir does not exist
         if not os.path.exists(directory_path):
             os.makedirs(directory_path)
         if not os.path.exists(directory_path+"/camera_calibration"):
@@ -1061,7 +1066,7 @@ class StereoParameters:
         self.H.R = self.R
         self.H.units = self.units
         self.H.info = self.info
-        self.H.save_to_json(os.path.splitext(full_save_path)[0]+ '_TransformationMatrix.json')
+        self.H.save_to_json(os.path.splitext(full_save_path)[0] + '_TransformationMatrix.json')
         with h5py.File(full_save_path, "a") as file:
             try:
                 file.create_dataset("camera_calibration/stereo_parameters/rms_reproj_error", data=self.rms_reproj_error)
@@ -1073,7 +1078,6 @@ class StereoParameters:
                 group.create_dataset("H", data=self.H.H.tolist())
                 group.attrs["info"] = self.H.info
                 group.attrs["units"] = self.H.units
-
             except ValueError:
                 file["camera_calibration/stereo_parameters/rms_reproj_error"][()] = self.rms_reproj_error
                 file["camera_calibration/stereo_parameters/R"][()] = self.R
@@ -1087,16 +1091,8 @@ class StereoParameters:
                 group.attrs["info"]  = self.H.info
                 group.attrs["units"] = self.H.units
 
-
-
     def load_parameters(self, full_save_path: str) -> None:
-        """Load calibration parameters from .h5 file into object.
-
-        :param full_save_path: Full filepath with directory and filename.
-        :raises KeyError: If there are no calibration parameters in the h5 file.
-        :raises OSError: If the path contains forbidden characters or an incompatible file is used.
-        :raises FileNotFoundError: If specified file does not exist.
-        """
+        """Load calibration parameters from .h5 file into object."""
         self.camera_parameters_1.load_parameters(full_save_path, "camera_calibration/camera_1_parameters")
         self.camera_parameters_2.load_parameters(full_save_path, "camera_calibration/camera_2_parameters")
         with h5py.File(full_save_path, "r") as file:
@@ -1108,27 +1104,19 @@ class StereoParameters:
                 self.F = file["camera_calibration/stereo_parameters/F"][()]
                 self.H = self.load_homogeneous(TransformationMatrix,
                     file["camera_calibration/stereo_parameters/TransformationMatrix"])
-
             except KeyError as e:
                 raise KeyError("File does not contain stereo calibration parameters.") from e
 
     @staticmethod
     def load_homogeneous(cls, group):
         obj = cls()
-        obj.H = group["H"][()]  # this is now a (4,4) array
+        obj.H = group["H"][()]
         obj.info = group.attrs.get("info", ["unknown", "unknown"])
         obj.units = group.attrs.get("units", "mm")
         return obj
 
     def calculate_undistort_rectify_maps(self, alpha: float = 0, fixed_point_maps: bool = False) -> None:
-        """Calculate rectification transforms and maps necessary for remapping.
-
-        :param alpha: Free scaling parameter between 0 (when all the pixels in the undistorted image are valid) and 1
-           (when all the source image pixels are retained in the undistorted image). If you set this at -1 OpenCV
-           automatically pick a value.
-        :param fixed_point_maps: Whether to transform the floating points map to a fixed-point representation. This
-           speeds up pixel remapping, which might be useful for live video feeds.
-        """
+        """Calculate rectification transforms and maps necessary for remapping."""
         sensor_dim_1 = self.camera_parameters_1.sensor_dimensions
         sensor_dim_2 = self.camera_parameters_2.sensor_dimensions
         if not np.array_equal(sensor_dim_1, sensor_dim_2):
@@ -1139,40 +1127,18 @@ class StereoParameters:
         distortion_2 = self.camera_parameters_2.get_distortion_coeffs_opencv()
 
         self.R_1, self.R_2, self.P_1, self.P_2, self.Q, self.roi_1, self.roi_2 \
-            = cv2.stereoRectify(intrinsics_1,
-                                distortion_1,
-                                intrinsics_2,
-                                distortion_2,
-                                sensor_dim_1,
-                                self.R,
-                                self.T,
-                                flags=cv2.CALIB_ZERO_DISPARITY,
-                                alpha=alpha)
+            = cv2.stereoRectify(intrinsics_1, distortion_1, intrinsics_2, distortion_2,
+                                sensor_dim_1, self.R, self.T,
+                                flags=cv2.CALIB_ZERO_DISPARITY, alpha=alpha)
 
-        if fixed_point_maps:
-            map_type = cv2.CV_16SC2
-        else:
-            map_type = cv2.CV_32FC1
-        self.map_1_x, self.map_1_y = cv2.initUndistortRectifyMap(intrinsics_1,
-                                                                 distortion_1,
-                                                                 self.R_1,
-                                                                 self.P_1,
-                                                                 sensor_dim_1,
-                                                                 map_type)
-        self.map_2_x, self.map_2_y = cv2.initUndistortRectifyMap(intrinsics_2,
-                                                                 distortion_2,
-                                                                 self.R_2,
-                                                                 self.P_2,
-                                                                 sensor_dim_2,
-                                                                 map_type)
+        map_type = cv2.CV_16SC2 if fixed_point_maps else cv2.CV_32FC1
+        self.map_1_x, self.map_1_y = cv2.initUndistortRectifyMap(
+            intrinsics_1, distortion_1, self.R_1, self.P_1, sensor_dim_1, map_type)
+        self.map_2_x, self.map_2_y = cv2.initUndistortRectifyMap(
+            intrinsics_2, distortion_2, self.R_2, self.P_2, sensor_dim_2, map_type)
 
     def remap_images(self, frame_1: npt.NDArray, frame_2: npt.NDArray) -> Tuple[npt.NDArray, npt.NDArray]:
-        """Remap the images so they are undistorted and rectified.
-
-        :param frame_1: The image for camera 1 that needs to be remapped, this is either a 2D or 3D array.
-        :param frame_2: The image for camera 2 that needs to be remapped, this is either a 2D or 3D array.
-        :returns: The undistorted and rectified images.
-        """
+        """Remap the images so they are undistorted and rectified."""
         try:
             rectified_1 = cv2.remap(frame_1, self.map_1_x, self.map_1_y, cv2.INTER_LINEAR)
             rectified_2 = cv2.remap(frame_2, self.map_2_x, self.map_2_y, cv2.INTER_LINEAR)
