@@ -694,67 +694,78 @@ class StereoCalibrator:
         return self.stereo_parameters
 
     def construct_feature_lists(
-            self,
-            image_array_1,
-            image_array_2,
-            space_between_features,
-            board_size,
-            marker,
-            **kwargs,
+        self,
+        image_array_1,
+        image_array_2,
+        space_between_features,
+        board_size,
+        marker,
+        **kwargs,
     ):
-        # FIX: Replaced ProcessPoolExecutor + shared_memory with a simple loop.
-        # This prevents the 0xC0000005 (ACCESS_VIOLATION) crash on Windows.
-        from .feature_detection import FeatureDetector
-        detector = FeatureDetector(space_between_features, board_size, marker, **kwargs)
-        detector.detector.checkerboard_detector.detector.show_processing = self.FeatureDetector_logging
-
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
+        n_workers = min(os.cpu_count() or 4, max(n_images_1, n_images_2))
 
-        results = []
-        for idx in range(n_images_1):
-            feature = detector.detect_feature(image_array_1[..., idx])
-            try:
-                img_pts = (
-                    np.array(feature.image_points, copy=True)
-                    if getattr(feature, "image_points", None) is not None
-                    else None
-                )
-                obj_pts = (
-                    np.array(feature.object_points, copy=True)
-                    if getattr(feature, "object_points", None) is not None
-                    else None
-                )
-                score = feature.score
-            except Exception:
-                img_pts = None
-                obj_pts = None
-                score = -1
-            results.append((idx, 0, SimpleFeature(score, img_pts, obj_pts)))
+        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
+        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
 
-        for idx in range(n_images_2):
-            feature = detector.detect_feature(image_array_2[..., idx])
-            try:
-                img_pts = (
-                    np.array(feature.image_points, copy=True)
-                    if getattr(feature, "image_points", None) is not None
-                    else None
-                )
-                obj_pts = (
-                    np.array(feature.object_points, copy=True)
-                    if getattr(feature, "object_points", None) is not None
-                    else None
-                )
-                score = feature.score
-            except Exception:
-                img_pts = None
-                obj_pts = None
-                score = -1
-            results.append((idx, 1, SimpleFeature(score, img_pts, obj_pts)))
+        try:
+            shared_arr1 = np.ndarray(
+                image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf
+            )
+            shared_arr1[:] = image_array_1[:]
+            shared_arr2 = np.ndarray(
+                image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf
+            )
+            shared_arr2[:] = image_array_2[:]
 
-        results.sort(key=lambda x: (x[1], x[0]))
-        self.feature_list_1 = [feature for _, cam_id, feature in results if cam_id == 0]
-        self.feature_list_2 = [feature for _, cam_id, feature in results if cam_id == 1]
+            # FIX 1: Tasks should ONLY contain the variable parts (idx, cam_id).
+            # The detector parameters are now handled by the worker initializer.
+            tasks = []
+            for idx in range(n_images_1):
+                tasks.append((idx, 0))
+            for idx in range(n_images_2):
+                tasks.append((idx, 1))
+
+            # Executor finishes completely here before we reach finally
+            with ProcessPoolExecutor(
+                max_workers=n_workers,
+                initializer=_init_stereo_worker,
+                initargs=(
+                    shm1.name,
+                    image_array_1.shape,
+                    image_array_1.dtype,
+                    shm2.name,
+                    image_array_2.shape,
+                    image_array_2.dtype,
+                    # FIX 2: Pass the missing detector initialization arguments here!
+                    space_between_features,
+                    board_size,
+                    marker,
+                    kwargs,
+                    self.FeatureDetector_logging,
+                ),
+            ) as executor:
+                results = list(executor.map(_stereo_worker, tasks))
+                results.sort(key=lambda x: (x[1], x[0]))
+                self.feature_list_1 = [
+                    feature for _, cam_id, feature in results if cam_id == 0
+                ]
+                self.feature_list_2 = [
+                    feature for _, cam_id, feature in results if cam_id == 1
+                ]
+
+        finally:
+            # Now it's safe to release on the main process side
+            for shm in (shm1, shm2):
+                try:
+                    shm.close()
+                except Exception:
+                    pass
+                try:
+                    shm.unlink()
+                except Exception:
+                    pass
 
     def construct_points_lists(self, indices: list) -> None:
         """Construct lists of image points and object points for calibration."""
@@ -895,7 +906,6 @@ class StereoCalibrator:
     def plot_reproj_error(self) -> None:
         """Plot mean re-projection error and re-projection error for each calibration image."""
         indices = list(map(str, self.indices))
-        # Fixed: camera 2 now correctly uses [:, 1]
         cam_errs = {'camera 1': self.per_view_err[:, 0], 'camera 2': self.per_view_err[:, 1]}
 
         fig, ax = plt.subplots()
