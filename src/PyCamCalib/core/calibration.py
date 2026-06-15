@@ -702,70 +702,78 @@ class StereoCalibrator:
         marker,
         **kwargs,
     ):
+        # FIX: Replaced ProcessPoolExecutor + shared_memory with a simple loop.
+        # This prevents the WinError 1450 (Insufficient system resources) and
+        # 0xC0000005 (ACCESS_VIOLATION) crashes on Windows caused by shared_memory
+        # handle limits and race conditions during unlinking.
+        from .feature_detection import FeatureDetector
+
+        detector_1 = FeatureDetector(
+            space_between_features, board_size, marker, **kwargs
+        )
+        detector_1.detector.checkerboard_detector.detector.show_processing = (
+            self.FeatureDetector_logging
+        )
+
+        detector_2 = FeatureDetector(
+            space_between_features, board_size, marker, **kwargs
+        )
+        detector_2.detector.checkerboard_detector.detector.show_processing = (
+            self.FeatureDetector_logging
+        )
+
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
-        n_workers = min(os.cpu_count() or 4, max(n_images_1, n_images_2))
 
-        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
-        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
+        results = []
 
-        try:
-            shared_arr1 = np.ndarray(
-                image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf
-            )
-            shared_arr1[:] = image_array_1[:]
-            shared_arr2 = np.ndarray(
-                image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf
-            )
-            shared_arr2[:] = image_array_2[:]
+        # Process Camera 1
+        for idx in range(n_images_1):
+            feature = detector_1.detect_feature(image_array_1[..., idx])
+            try:
+                img_pts = (
+                    np.array(feature.image_points, copy=True)
+                    if getattr(feature, "image_points", None) is not None
+                    else None
+                )
+                obj_pts = (
+                    np.array(feature.object_points, copy=True)
+                    if getattr(feature, "object_points", None) is not None
+                    else None
+                )
+                score = feature.score
+            except Exception:
+                img_pts = None
+                obj_pts = None
+                score = -1
+            results.append((idx, 0, SimpleFeature(score, img_pts, obj_pts)))
 
-            # FIX 1: Tasks should ONLY contain the variable parts (idx, cam_id).
-            # The detector parameters are now handled by the worker initializer.
-            tasks = []
-            for idx in range(n_images_1):
-                tasks.append((idx, 0))
-            for idx in range(n_images_2):
-                tasks.append((idx, 1))
+        # Process Camera 2
+        for idx in range(n_images_2):
+            feature = detector_2.detect_feature(image_array_2[..., idx])
+            try:
+                img_pts = (
+                    np.array(feature.image_points, copy=True)
+                    if getattr(feature, "image_points", None) is not None
+                    else None
+                )
+                obj_pts = (
+                    np.array(feature.object_points, copy=True)
+                    if getattr(feature, "object_points", None) is not None
+                    else None
+                )
+                score = feature.score
+            except Exception:
+                img_pts = None
+                obj_pts = None
+                score = -1
+            results.append((idx, 1, SimpleFeature(score, img_pts, obj_pts)))
 
-            # Executor finishes completely here before we reach finally
-            with ProcessPoolExecutor(
-                max_workers=n_workers,
-                initializer=_init_stereo_worker,
-                initargs=(
-                    shm1.name,
-                    image_array_1.shape,
-                    image_array_1.dtype,
-                    shm2.name,
-                    image_array_2.shape,
-                    image_array_2.dtype,
-                    # FIX 2: Pass the missing detector initialization arguments here!
-                    space_between_features,
-                    board_size,
-                    marker,
-                    kwargs,
-                    self.FeatureDetector_logging,
-                ),
-            ) as executor:
-                results = list(executor.map(_stereo_worker, tasks))
-                results.sort(key=lambda x: (x[1], x[0]))
-                self.feature_list_1 = [
-                    feature for _, cam_id, feature in results if cam_id == 0
-                ]
-                self.feature_list_2 = [
-                    feature for _, cam_id, feature in results if cam_id == 1
-                ]
+        # Sort by camera ID, then by image index
+        results.sort(key=lambda x: (x[1], x[0]))
 
-        finally:
-            # Now it's safe to release on the main process side
-            for shm in (shm1, shm2):
-                try:
-                    shm.close()
-                except Exception:
-                    pass
-                try:
-                    shm.unlink()
-                except Exception:
-                    pass
+        self.feature_list_1 = [feature for _, cam_id, feature in results if cam_id == 0]
+        self.feature_list_2 = [feature for _, cam_id, feature in results if cam_id == 1]
 
     def construct_points_lists(self, indices: list) -> None:
         """Construct lists of image points and object points for calibration."""
@@ -969,99 +977,86 @@ class StereoCalibrator:
         return not_selected_indices
 
     def save_checkerboard_detection_to_images(self, image_array_1, image_array_2, path):
-        """Save detection results for both cameras to disk in parallel using optimized workers."""
+        """Save detection results for both cameras to disk in parallel."""
         if not os.path.exists(path):
             os.makedirs(path)
         n_images = image_array_1.shape[-1]
         is_color = len(image_array_1.shape) == 4
         n_workers = min(os.cpu_count() or 4, n_images)
 
-        shm1 = shared_memory.SharedMemory(create=True, size=image_array_1.nbytes)
-        shm2 = shared_memory.SharedMemory(create=True, size=image_array_2.nbytes)
-        try:
-            arr1 = np.ndarray(
-                image_array_1.shape, dtype=image_array_1.dtype, buffer=shm1.buf
-            )
-            arr2 = np.ndarray(
-                image_array_2.shape, dtype=image_array_2.dtype, buffer=shm2.buf
-            )
-            arr1[:] = image_array_1[:]
-            arr2[:] = image_array_2[:]
+        # FIX: ThreadPoolExecutor runs in the same process, so threads share memory.
+        # We DO NOT need shared_memory here. Removing it prevents WinError 1450 handle leaks.
+        tasks = []
+        for image_idx in range(n_images):
+            if image_idx in self.indices:
+                fi = self.indices.index(image_idx)
+                used_pts_1 = [tuple(p) for p in self.image_points_list_1[fi]]
+                used_pts_2 = [tuple(p) for p in self.image_points_list_2[fi]]
+                det_pts_1 = det_pts_2 = None
+            elif (
+                image_idx < len(self.feature_list_1)
+                and image_idx < len(self.feature_list_2)
+                and self.feature_list_1[image_idx].score != 0
+                and self.feature_list_2[image_idx].score != 0
+            ):
+                used_pts_1 = used_pts_2 = None
+                det_pts_1 = [
+                    tuple(p) for p in self.feature_list_1[image_idx].image_points
+                ]
+                det_pts_2 = [
+                    tuple(p) for p in self.feature_list_2[image_idx].image_points
+                ]
+            else:
+                used_pts_1 = used_pts_2 = det_pts_1 = det_pts_2 = None
+            tasks.append((image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2))
 
-            tasks = []
-            for image_idx in range(n_images):
-                if image_idx in self.indices:
-                    fi = self.indices.index(image_idx)
-                    used_pts_1 = [tuple(p) for p in self.image_points_list_1[fi]]
-                    used_pts_2 = [tuple(p) for p in self.image_points_list_2[fi]]
-                    det_pts_1 = det_pts_2 = None
-                elif (
-                    image_idx < len(self.feature_list_1)
-                    and image_idx < len(self.feature_list_2)
-                    and self.feature_list_1[image_idx].score != 0
-                    and self.feature_list_2[image_idx].score != 0
-                ):
-                    used_pts_1 = used_pts_2 = None
-                    det_pts_1 = [
-                        tuple(p) for p in self.feature_list_1[image_idx].image_points
-                    ]
-                    det_pts_2 = [
-                        tuple(p) for p in self.feature_list_2[image_idx].image_points
-                    ]
-                else:
-                    used_pts_1 = used_pts_2 = det_pts_1 = det_pts_2 = None
-                tasks.append((image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2))
+        def worker(task):
+            image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2 = task
 
-            def worker(task):
-                image_idx, used_pts_1, used_pts_2, det_pts_1, det_pts_2 = task
+            # Access the original arrays directly (no shared memory needed)
+            img1 = image_array_1[..., image_idx].copy()
+            img2 = image_array_2[..., image_idx].copy()
 
-                img1 = arr1[..., image_idx].copy()
-                img2 = arr2[..., image_idx].copy()
+            cvt = cv2.COLOR_BGR2RGB if is_color else cv2.COLOR_GRAY2RGB
+            img1 = cv2.cvtColor(img1, cvt)
+            img2 = cv2.cvtColor(img2, cvt)
 
-                cvt = cv2.COLOR_BGR2RGB if is_color else cv2.COLOR_GRAY2RGB
-                img1 = cv2.cvtColor(img1, cvt)
-                img2 = cv2.cvtColor(img2, cvt)
+            if used_pts_1 is not None:
+                for pt in used_pts_1:
+                    cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+                for pt in used_pts_2:
+                    cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
+            elif det_pts_1 is not None:
+                for pt in det_pts_1:
+                    cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
+                for pt in det_pts_2:
+                    cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
 
-                if used_pts_1 is not None:
-                    for pt in used_pts_1:
-                        cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
-                    for pt in used_pts_2:
-                        cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (0, 255, 0), 1)
-                elif det_pts_1 is not None:
-                    for pt in det_pts_1:
-                        cv2.circle(img1, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
-                    for pt in det_pts_2:
-                        cv2.circle(img2, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), 1)
-
-                tag = "detected with pycbd, InViLab, doi:10.3390/math11224568"
-                for img in (img1, img2):
-                    cv2.putText(
-                        img,
-                        tag,
-                        (10, img.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 255, 255),
-                        1,
-                        cv2.LINE_AA,
-                    )
-
-                cv2.imwrite(
-                    os.path.join(path, f"image_1_{image_idx + 1}.png"),
-                    cv2.cvtColor(img1, cv2.COLOR_RGB2BGR),
-                )
-                cv2.imwrite(
-                    os.path.join(path, f"image_2_{image_idx + 1}.png"),
-                    cv2.cvtColor(img2, cv2.COLOR_RGB2BGR),
+            tag = "detected with pycbd, InViLab, doi:10.3390/math11224568"
+            for img in (img1, img2):
+                cv2.putText(
+                    img,
+                    tag,
+                    (10, img.shape[0] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                    cv2.LINE_AA,
                 )
 
-            with ThreadPoolExecutor(max_workers=n_workers) as executor:
-                list(executor.map(worker, tasks))
-        finally:
-            shm1.close()
-            shm1.unlink()
-            shm2.close()
-            shm2.unlink()
+            cv2.imwrite(
+                os.path.join(path, f"image_1_{image_idx + 1}.png"),
+                cv2.cvtColor(img1, cv2.COLOR_RGB2BGR),
+            )
+            cv2.imwrite(
+                os.path.join(path, f"image_2_{image_idx + 1}.png"),
+                cv2.cvtColor(img2, cv2.COLOR_RGB2BGR),
+            )
+
+        # Use ThreadPoolExecutor directly on the original arrays
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            list(executor.map(worker, tasks))
 
 # ---------------------------------------------------------------------------
 # StereoParameters CLASS
