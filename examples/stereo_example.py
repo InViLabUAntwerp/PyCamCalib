@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch, Rectangle
 import time
+import os
 
 #%% Load image sets for both cameras
 files = sorted(glob.glob('stereo_images/left/*.tiff'))
@@ -45,7 +46,8 @@ idx_new = stereo_calibrator.plot_and_filter_reproj_error()
 print(idx_new)
 stereo_parameters = stereo_calibrator.calibrate_indices(idx_new)
 # Save checkerboard detection to images (for debugging)
-stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, '.\stereo_imagesdetected')
+output_path = os.path.join(os.path.dirname(__file__), 'stereo_images', 'detected')
+stereo_calibrator.save_checkerboard_detection_to_images(image_array_1,image_array_2, output_path)
 
 print(f"elapsed time since start of project: {time.time()-start};")
 
