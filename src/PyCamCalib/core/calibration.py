@@ -20,6 +20,7 @@ from .CameraParameters import CameraParameters
 
 from multiprocessing import shared_memory
 from concurrent.futures import ProcessPoolExecutor
+import atexit
 
 # --- SIMPLE PICKLABLE WRAPPER ---
 # C++ objects often can't be pickled across process boundaries.
@@ -40,6 +41,15 @@ def _init_camera_worker(shm_name, shape, dtype):
     global _SHM_CAM, _SHARED_CAM_ARRAY
     _SHM_CAM = shared_memory.SharedMemory(name=shm_name)
     _SHARED_CAM_ARRAY = np.ndarray(shape, dtype=dtype, buffer=_SHM_CAM.buf)
+
+    def _cleanup_worker():
+        global _SHM_CAM
+        if _SHM_CAM is not None:
+            try:
+                _SHM_CAM.close()
+            except Exception:
+                pass
+    atexit.register(_cleanup_worker)
 
 def _camera_worker(args):
     """Worker function for single camera feature detection."""
@@ -89,13 +99,21 @@ def _init_stereo_worker(shm_name_1, shape_1, dtype_1,
     """Initializer for StereoCalibrator workers. Attaches to existing shared memory blocks."""
     global _SHM_CAM1, _SHM_CAM2, _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY
 
-    # Attach to shared memory block for camera 1
     _SHM_CAM1 = shared_memory.SharedMemory(name=shm_name_1)
     _SHARED_CAM1_ARRAY = np.ndarray(shape_1, dtype=dtype_1, buffer=_SHM_CAM1.buf)
 
-    # Attach to shared memory block for camera 2
     _SHM_CAM2 = shared_memory.SharedMemory(name=shm_name_2)
     _SHARED_CAM2_ARRAY = np.ndarray(shape_2, dtype=dtype_2, buffer=_SHM_CAM2.buf)
+
+    def _cleanup_stereo_worker():
+        global _SHM_CAM1, _SHM_CAM2
+        for shm in (_SHM_CAM1, _SHM_CAM2):
+            if shm is not None:
+                try:
+                    shm.close()
+                except Exception:
+                    pass
+    atexit.register(_cleanup_stereo_worker)
 
 def _stereo_worker(args):
     """Worker function for stereo camera feature detection."""
@@ -257,8 +275,14 @@ class CameraCalibrator:
             ) as executor:
                 results = list(executor.map(_camera_worker, tasks))
         finally:
-            shm.close()
-            shm.unlink()
+            try:
+                shm.close()
+            except Exception:
+                pass
+            try:
+                shm.unlink()
+            except Exception:
+                pass
 
         results.sort(key=lambda x: x[0])
         self.feature_list = [feature for _, feature in results]
@@ -692,11 +716,15 @@ class StereoCalibrator:
             ) as executor:
                 results = list(executor.map(_stereo_worker, tasks))
         finally:
-            # IMPORTANT: Always clean up shared memory, even if something crashes
-            shm1.close()
-            shm1.unlink()
-            shm2.close()
-            shm2.unlink()
+            for shm in (shm1, shm2):
+                try:
+                    shm.close()
+                except Exception:
+                    pass
+                try:
+                    shm.unlink()
+                except Exception:
+                    pass
 
         # Sort by camera ID first, then by image index
         results.sort(key=lambda x: (x[1], x[0]))
