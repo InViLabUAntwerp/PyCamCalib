@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import os
+import gc
 import sys
 import cv2
 import h5py
@@ -429,6 +430,8 @@ class CameraCalibrator:
         finally:
             shm.close()
             shm.unlink()
+            del shared_arr
+            gc.collect()
 
     def construct_points_lists(self, indices: list, absolute: bool = False) -> None:
         """Construct lists of image points and object points for calibration."""
@@ -778,6 +781,9 @@ class StereoCalibrator:
                     shm.unlink()
                 except Exception:
                     pass
+            del shared_arr1
+            del shared_arr2
+            gc.collect()
 
     def construct_points_lists(self, indices: list) -> None:
         """Construct lists of image points and object points for calibration."""
