@@ -5,41 +5,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import os
-
 # Everything below must be guarded on Windows
 if __name__ == '__main__':
-
     # %% Configuration
-    EXTRINSIC_ROOT = "extrinsic"
+    EXTRINSIC_ROOT = "intrinsic"
     N_SCANS = 50
-    CAMERA = "L_pattern"
-    VARIANT = "white"
-
+    CAMERA = "L_scan"
     # %% Load images
     image_list = []
-    for scan_idx in range(1, N_SCANS + 1):
+    for scan_idx in range(N_SCANS):
         filename = os.path.join(
             EXTRINSIC_ROOT,
-            f"scan_{scan_idx}",
-            f"{CAMERA}_{VARIANT}.png",
+            CAMERA,
+            f"{scan_idx}.png",
         )
         image = cv2.imread(filename)
         if image is None:
             print(f"Warning: could not read {filename}")
             continue
         image_list.append(image)
-
     if len(image_list) == 0:
         raise RuntimeError("No images found.")
-
     image_array = np.stack(image_list, axis=-1)
     print(f"Loaded {image_array.shape[-1]} images")
     print(f"Array shape: {image_array.shape}")
-
     # %% Perform calibration
     calibrator = CameraCalibrator()
-    camera_parameters = calibrator.calibrate(image_array, 1)
-
+    camera_parameters = calibrator.calibrate(image_array, 8.0,(8,11))
     # %% Plot detections
     for image_idx in range(image_array.shape[-1]):
         image = image_array[..., image_idx]
@@ -59,18 +51,14 @@ if __name__ == '__main__':
         plt.title(f"Image {image_idx + 1}", color=color)
         plt.axis("off")
         plt.show()
-
     # %% Plot reprojection error
     calibrator.plot_reproj_error()
-
     # %% Remove outliers and recalibrate
     new_indices = calibrator.plot_and_filter_reproj_error()
     camera_parameters = calibrator.calibrate_indices(new_indices)
     calibrator.plot_reproj_error()
-
     # %% Visualize distortion
     camera_parameters.plot_distortion()
-
     # %% Undistort an example image
     camera_parameters.calculate_undistort_map()
     image = image_array[..., 0]
@@ -92,7 +80,6 @@ if __name__ == '__main__':
     for ax in axarr:
         ax.axis("off")
     plt.show()
-
     # %% Save parameters
-    camera_parameters.save_parameters(f"{CAMERA}_{VARIANT}_intrinsic_parameters.h5")
+    camera_parameters.save_parameters(f"{CAMERA}_intrinsic_parameters.h5")
     print("Intrinsic calibration complete.")
