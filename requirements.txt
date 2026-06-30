@@ -10,5 +10,6 @@ sphinx-autodoc-typehints
 pipreqs
 build
 rx
-GPy
+libcbdetect
+PyCBD
 CTPv
