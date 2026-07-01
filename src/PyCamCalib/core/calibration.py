@@ -717,7 +717,7 @@ class StereoCalibrator:
     ):
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
-        n_workers = min(os.cpu_count() or 4 // 2, max(n_images_1, n_images_2))
+        n_workers = min((os.cpu_count() or 4) // 2, max(n_images_1, n_images_2))
 
         shm1 = _safe_shared_memory(image_array_1.nbytes)
         shm2 = _safe_shared_memory(image_array_2.nbytes)
