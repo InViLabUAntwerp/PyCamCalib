@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use('Agg') # Force matplotlib to run in background without windows
 import matplotlib.pyplot as plt
 
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_from_directory
 from werkzeug.utils import secure_filename
 
 # Import your exact InViLab calibration logic
@@ -222,6 +222,13 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
 def index():
     return render_template('index.html')
 
+@app.route('/api/info/<path:filename>')
+def get_info_html(filename):
+    """Serves the static HTML info files from the templates/info directory."""
+    # Securely serve files from a specific directory
+    return send_from_directory('templates/info', filename)
+
+
 
 @app.route('/api/calibrate/initial', methods=['POST'])
 def calibrate_initial():
@@ -238,7 +245,10 @@ def calibrate_initial():
     state.image_names = []
     state.image_array = None
 
+    # --- Get calibration settings from form ---
     files = request.files.getlist('files')
+    detector_type = request.form.get('detector_type', 'checkerboard')
+    charuco_preset = request.form.get('charuco_preset') # Will be 'wenglor' or 'None'
     checker_size = float(request.form.get('checker_size', 1.0))
     state.absolute = request.form.get('absolute') == 'true'
     pixel_size_str = request.form.get('pixel_size')
@@ -259,10 +269,6 @@ def calibrate_initial():
             board_size = (int(board_width), int(board_height))
         except ValueError:
             pass
-
-    marker_location = None
-    expand = False
-    predict = False
 
     valid_files = [f for f in files if f.filename != '']
     if not valid_files:
@@ -287,45 +293,42 @@ def calibrate_initial():
         state.image_names.append(filename)
 
     try:
-        sensor_dimensions = np.array([state.image_array.shape[1], state.image_array.shape[0]])
+        # --- Prepare detector parameters ---
+        detector_params = {}
+        if detector_type == "charuco":
+            # The string 'None' from the form becomes Python's None
+            detector_params["preset"] = None if charuco_preset == 'None' else charuco_preset
 
-        detected_board_size = board_size
-        if detected_board_size is None:
-            for i in range(state.image_array.shape[-1]):
-                temp_calibrator = CameraCalibrator()
-                temp_calibrator.construct_feature_list(
-                    state.image_array[..., i:i+1], checker_size, None, None, expand=expand, predict=predict
-                )
-                if temp_calibrator.feature_list and temp_calibrator.feature_list[0].score > 0:
-                    obj_pts = temp_calibrator.feature_list[0].object_points
-                    if obj_pts is not None and len(obj_pts) > 0:
-                        xs = np.unique(np.round(obj_pts[:, 0], decimals=3))
-                        ys = np.unique(np.round(obj_pts[:, 1], decimals=3))
-                        detected_board_size = (len(xs), len(ys))
-                        break
-
-        state.board_size = detected_board_size
-
-        state.calibrator.construct_feature_list(
-            state.image_array, checker_size, detected_board_size, marker_location, expand=expand, predict=predict
+        # --- Perform Calibration ---
+        # The `calibrate` method handles feature detection and calibration internally
+        state.calibration_parameters = state.calibrator.calibrate(
+            image_array=state.image_array,
+            space_between_features=checker_size,
+            board_size=board_size,
+            detector_type=detector_type,
+            detector_params=detector_params,
+            absolute=state.absolute
         )
 
-        if state.absolute and detected_board_size is not None:
-            expected_points = detected_board_size[0] * detected_board_size[1]
+        # --- Post-calibration processing ---
+        # Try to determine board size for display if it was auto-detected
+        if board_size is None and state.calibrator.feature_list:
             for feature in state.calibrator.feature_list:
-                if feature.score > 0 and feature.object_points is not None:
-                    if len(feature.object_points) == expected_points:
-                        feature.score = 2
+                if feature.score > 0 and feature.object_points is not None and len(feature.object_points) > 0:
+                    # This logic works for both checkerboard and charuco object points
+                    xs = np.unique(np.round(feature.object_points[:, 0] / checker_size))
+                    ys = np.unique(np.round(feature.object_points[:, 1] / checker_size))
+                    state.board_size = (len(xs), len(ys))
+                    break
+        else:
+            state.board_size = board_size
 
-        state.calibrator.construct_points_lists([], state.absolute)
-        if not state.calibrator.image_points_list:
-            return jsonify({"error": "Failed to detect specified feature in every image."}), 400
-
-        state.calibration_parameters = state.calibrator.opencv_calibration(sensor_dimensions)
+        # Set optional metadata
         if state.pixel_size_um is not None:
             state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
         if state.info is not None:
             state.calibration_parameters.info = state.info
+
         return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator, state))
 
     except Exception as e:

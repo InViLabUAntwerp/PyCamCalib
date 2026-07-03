@@ -33,6 +33,7 @@ dependencies = [
   'importlib_resources',
   'matplotlib',
   'numpy',
+  "opencv-contrib-python>=4.11.0.86",
   'opencv-python',
   'pyqtgraph',
   'PySide6',

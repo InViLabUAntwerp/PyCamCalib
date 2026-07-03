@@ -40,6 +40,23 @@ h2 {
     background-color: var(--fti-purple);
     color: white;
 }
+.btn-info-icon {
+    background-color: rgba(255, 255, 255, 0.7);
+    color: var(--ua-blue);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border: none;
+    font-size: 1rem;
+    transition: background-color 0.2s ease-in-out;
+}
+.btn-info-icon:hover {
+    background-color: white;
+}
 
 /* Card Headers */
 .card-header.bg-primary {
@@ -49,6 +66,11 @@ h2 {
     background-color: var(--fti-purple) !important;
 }
 .card-header.bg-dark {
+    background-color: var(--ua-blue) !important;
+}
+
+/* Modal Header */
+.modal-header.bg-primary {
     background-color: var(--ua-blue) !important;
 }
 
@@ -71,4 +93,17 @@ h2 {
 .image-viewer-container {
     background-color: #f8f9fa;
     border: 2px solid var(--fti-pastel);
+}
+
+/* Info Modal Content Styling */
+.info-content h5 {
+    color: var(--ua-blue);
+}
+
+.info-content strong {
+    color: var(--fti-purple);
+}
+
+.info-content hr {
+    border-top: 1px solid var(--fti-pastel);
 }

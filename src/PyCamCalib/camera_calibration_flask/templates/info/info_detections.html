@@ -1,0 +1,14 @@
+<div class="info-content">
+    <h5 class="fw-bold">Detections Viewer</h5>
+    <p>This viewer allows you to inspect the feature detection results for each individual image.</p>
+    <hr>
+    
+    <p>Use the slider to navigate through all the images you uploaded.</p>
+    
+    <p><strong>Point Colors:</strong></p>
+    <ul>
+        <li><span style="color: #00DD00; font-weight: bold;">Green:</span> The corners were successfully detected and were included in the final calibration calculation.</li>
+        <li><span style="color: #FF0000; font-weight: bold;">Red:</span> The corners were detected, but the image was not used in the final calculation (either because it was manually excluded as an outlier, or it failed the 'absolute' check).</li>
+        <li>If no points are visible, it means the detector failed to find the calibration pattern in this image.</li>
+    </ul>
+</div>

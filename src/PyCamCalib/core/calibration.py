@@ -42,14 +42,38 @@ _SHM_CAM = None
 _SHARED_CAM_ARRAY = None
 _DETECTOR_CAM = None
 
-def _init_camera_worker(shm_name, shape, dtype, space_between_features, board_size, marker, kwargs_dict, show_processing):
+
+def _init_camera_worker(shm_name, shape, dtype, space_between_features, board_size, marker, kwargs_dict,
+                        show_processing, detector_type, detector_params):
     global _SHM_CAM, _SHARED_CAM_ARRAY, _DETECTOR_CAM
-    _SHM_CAM = _attach_shared_memory(shm_name)          # <-- changed
+    _SHM_CAM = _attach_shared_memory(shm_name)
     _SHARED_CAM_ARRAY = np.ndarray(shape, dtype=dtype, buffer=_SHM_CAM.buf)
 
-    from .feature_detection import FeatureDetector
-    _DETECTOR_CAM = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
-    _DETECTOR_CAM.detector.checkerboard_detector.detector.show_processing = show_processing
+    if detector_type == "charuco":
+        from .CharucoFeatureDetector import CharucoFeatureDetector
+
+        # FIX: Explicitly handle the preset string
+        preset = detector_params.get("preset")
+        board = detector_params.get("board")
+
+        # If no board but a preset name is provided, load it here!
+        if board is None and preset is not None:
+            board = CharucoFeatureDetector.get_preset_board(preset)
+
+        _DETECTOR_CAM = CharucoFeatureDetector(
+            space_between_features,
+            preset=preset,
+            board=board,
+            **kwargs_dict
+        )
+    else:
+
+        from .feature_detection import FeatureDetector
+        _DETECTOR_CAM = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
+
+    # Set processing visualization
+    if hasattr(_DETECTOR_CAM, 'detector') and hasattr(_DETECTOR_CAM.detector, 'checkerboard_detector'):
+        _DETECTOR_CAM.detector.checkerboard_detector.detector.show_processing = show_processing
 
 def _camera_worker(idx):
     """Worker function for single camera feature detection. Only receives index."""
@@ -88,7 +112,8 @@ _SHARED_CAM2_ARRAY = None
 _DETECTOR_STEREO = None
 
 def _init_stereo_worker(shm_name_1, shape_1, dtype_1, shm_name_2, shape_2, dtype_2,
-                        space_between_features, board_size, marker, kwargs_dict, show_processing):
+                        space_between_features, board_size, marker, kwargs_dict, show_processing,
+                        detector_type, detector_params):
     global _SHM_CAM1, _SHM_CAM2, _SHARED_CAM1_ARRAY, _SHARED_CAM2_ARRAY, _DETECTOR_STEREO
 
     _SHM_CAM1 = _attach_shared_memory(shm_name_1)       # <-- changed
@@ -96,8 +121,17 @@ def _init_stereo_worker(shm_name_1, shape_1, dtype_1, shm_name_2, shape_2, dtype
     _SHM_CAM2 = _attach_shared_memory(shm_name_2)       # <-- changed
     _SHARED_CAM2_ARRAY = np.ndarray(shape_2, dtype=dtype_2, buffer=_SHM_CAM2.buf)
 
-    from .feature_detection import FeatureDetector
-    _DETECTOR_STEREO = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
+    if detector_type == "charuco":
+        from .CharucoFeatureDetector import CharucoFeatureDetector
+        board = detector_params.get("board")
+        preset = detector_params.get("preset")
+        _DETECTOR_STEREO = CharucoFeatureDetector(
+            space_between_features, preset=preset, board=board, **kwargs_dict
+        )
+    else:
+        from .feature_detection import FeatureDetector
+        _DETECTOR_STEREO = FeatureDetector(space_between_features, board_size, marker, **kwargs_dict)
+
     _DETECTOR_STEREO.detector.checkerboard_detector.detector.show_processing = show_processing
 
 def _stereo_worker(args):
@@ -371,7 +405,21 @@ class CameraCalibrator:
     def calibrate(self, image_array: npt.NDArray, space_between_features: float,
                   board_size: Optional[Tuple[int, int]] = None,
                   marker: Optional[Tuple[int, int]] = None,
+                  detector_type: str = "checkerboard",
+                  detector_params: Optional[dict] = None,  # Make sure this is handled
                   absolute: bool = False, **kwargs) -> CameraParameters:
+
+        # Ensure it's a dict, not None
+        if detector_params is None:
+            detector_params = {}
+
+        self._logger.info(f"Detecting features using {detector_type}")
+        self.construct_feature_list(
+            image_array, space_between_features, board_size, marker,
+            detector_type=detector_type,
+            detector_params=detector_params,  # Pass the safe dict
+            **kwargs
+        )
         """Calibrate camera."""
         if not isinstance(image_array, np.ndarray):
             raise TypeError("``image_array`` should be a numpy array.")
@@ -381,9 +429,8 @@ class CameraCalibrator:
         if marker is not None:
             raise NotImplementedError("Marked checkerboards have not been implemented.")
 
-        self._logger.info("Detecting features")
         sensor_dimensions = np.array([image_array.shape[1], image_array.shape[0]])
-        self.construct_feature_list(image_array, space_between_features, board_size, marker, **kwargs)
+
         self.construct_points_lists([], absolute)
         if not self.image_points_list:
             raise CalibrationError("Failed to detect features in all images, unable to perform calibration.")
@@ -396,7 +443,8 @@ class CameraCalibrator:
         return camera_parameters
 
     def construct_feature_list(self, image_array, space_between_features,
-                               board_size=None, marker=None, **kwargs):
+                               board_size=None, marker=None, detector_type="checkerboard",
+                               detector_params=None, **kwargs):
         image_array = np.ascontiguousarray(image_array)
         n_images = image_array.shape[-1]
         n_workers = min((os.cpu_count() or 4) // 2, n_images)
@@ -420,6 +468,8 @@ class CameraCalibrator:
                             marker,
                             dict(kwargs),
                             self.FeatureDetector_logging,
+                            detector_type,  # New arg
+                            detector_params or {}  # New arg
                     ),
             ) as executor:
                 results = list(executor.map(_camera_worker, range(n_images)))
@@ -652,6 +702,8 @@ class StereoCalibrator:
                   space_between_features: float,
                   board_size: Tuple[int, int],
                   marker: Optional[Tuple[int, int]] = None,
+                  detector_type: str = "checkerboard",  # Add this
+                  detector_params: Optional[dict] = None,  # Add this
                   **kwargs) -> StereoParameters:
         """Perform stereo calibration."""
         if not isinstance(image_array_1, np.ndarray) or not isinstance(image_array_2, np.ndarray):
@@ -660,8 +712,11 @@ class StereoCalibrator:
             raise NotImplementedError("Marked checkerboards have not been implemented.")
 
         self._logger.info("Detecting features")
-        self.construct_feature_lists(image_array_1, image_array_2, space_between_features, board_size, marker, **kwargs)
-
+        self.construct_feature_lists(
+            image_array_1, image_array_2, space_between_features,
+            board_size, marker, detector_type=detector_type,
+            detector_params=detector_params, **kwargs
+        )
         self.construct_points_lists([])
         if not self.object_points_list:
             raise CalibrationError("Failed to detect common features in all images, unable to perform calibration.")
@@ -713,7 +768,7 @@ class StereoCalibrator:
         space_between_features,
         board_size,
         marker,
-        **kwargs,
+        detector_type="checkerboard", detector_params=None, **kwargs
     ):
         n_images_1 = image_array_1.shape[-1]
         n_images_2 = image_array_2.shape[-1]
@@ -744,22 +799,16 @@ class StereoCalibrator:
 
             # Executor finishes completely here before we reach finally
             with ProcessPoolExecutor(
-                max_workers=n_workers,
-                initializer=_init_stereo_worker,
-                initargs=(
-                    shm1.name,
-                    image_array_1.shape,
-                    image_array_1.dtype,
-                    shm2.name,
-                    image_array_2.shape,
-                    image_array_2.dtype,
-                    # FIX 2: Pass the missing detector initialization arguments here!
-                    space_between_features,
-                    board_size,
-                    marker,
-                    kwargs,
-                    self.FeatureDetector_logging,
-                ),
+                    max_workers=n_workers,
+                    initializer=_init_stereo_worker,
+                    initargs=(
+                            shm1.name, image_array_1.shape, image_array_1.dtype,
+                            shm2.name, image_array_2.shape, image_array_2.dtype,
+                            space_between_features, board_size, marker, dict(kwargs),
+                            self.FeatureDetector_logging,
+                            detector_type,  # ADD THIS
+                            detector_params or {}  # ADD THIS
+                    ),
             ) as executor:
                 results = list(executor.map(_stereo_worker, tasks))
                 results.sort(key=lambda x: (x[1], x[0]))

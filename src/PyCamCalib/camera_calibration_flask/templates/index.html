@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InViLab Camera Calibration</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 
@@ -30,23 +31,40 @@
     <div class="row">
         <div class="col-md-4">
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-primary text-white fw-bold">Settings</div>
+                <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>Settings</span>
+                    <button class="btn btn-info-icon" onclick="showInfoModal('info_settings.html')"><i class="bi bi-info-lg"></i></button>
+                </div>
                 <div class="card-body bg-light border">
                     <div class="mb-3">
-                        <label class="form-label text-dark fw-bold">Checker Size (mm)</label>
-                        <input type="number" class="form-control border-secondary" id="checkerSize" value="1.0" step="0.1">
+                        <label for="detectorType" class="form-label text-dark fw-bold">Detector Type</label>
+                        <select class="form-select border-secondary" id="detectorType" onchange="toggleDetectorOptions()">
+                            <option value="checkerboard" selected>Checkerboard</option>
+                            <option value="charuco">ChArUco</option>
+                        </select>
                     </div>
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="absoluteCheck">
-                        <label class="form-check-label text-dark" for="absoluteCheck">Use Absolute Positions</label>
+                    <div id="charucoOptions" class="mb-3 d-none">
+                        <label for="charucoPreset" class="form-label text-dark fw-bold">ChArUco Preset</label>
+                        <select class="form-select border-secondary" id="charucoPreset">
+                            <option value="None" selected>Auto-Detect Board</option>
+                            <option value="wenglor">Wenglor Board</option>
+                        </select>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label text-dark fw-bold" id="checkerSizeLabel">Square Size (mm)</label>
+                        <input type="number" class="form-control border-secondary" id="checkerSize" value="1.0" step="0.1">
+                    </div>
+                    <div class="mb-3" id="boardSizeGroup">
                         <label class="form-label text-dark fw-bold">Board Corners (Cols &times; Rows) <span class="fw-normal text-muted">- Optional</span></label>
                         <div class="input-group">
                             <input type="number" class="form-control border-secondary" id="boardWidth" placeholder="Auto" min="3">
                             <span class="input-group-text border-secondary">&times;</span>
                             <input type="number" class="form-control border-secondary" id="boardHeight" placeholder="Auto" min="3">
                         </div>
+                    </div>
+                    <div class="form-check mb-3" id="absoluteCheckGroup">
+                        <input class="form-check-input" type="checkbox" id="absoluteCheck">
+                        <label class="form-check-label text-dark" for="absoluteCheck">Require all corners (Absolute)</label>
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-dark fw-bold">Pixel Size (&mu;m) - Optional</label>
@@ -69,7 +87,7 @@
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center fw-bold">
                     <span>Parameters</span>
-                    <button class="btn btn-sm btn-light text-dark fw-bold" id="btnExport" onclick="exportJSON()" disabled>Export JSON</button>
+                    <div><button class="btn btn-info-icon me-2" onclick="showInfoModal('info_parameters.html')"><i class="bi bi-info-lg"></i></button><button class="btn btn-sm btn-light text-dark fw-bold" id="btnExport" onclick="exportJSON()" disabled>Export JSON</button></div>
                 </div>
                 <div class="card-body p-0 table-responsive border">
                     <table class="table table-striped table-hover mb-0" id="resultsTable">
@@ -91,8 +109,9 @@
         <div class="col-md-8">
 
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-dark text-white p-2">
+                <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
                     <span class="ps-2 fw-bold">RMS Reprojection Error</span>
+                    <button class="btn btn-info-icon" onclick="showInfoModal('info_rms_plot.html')"><i class="bi bi-info-lg"></i></button>
                 </div>
                 <div class="card-body border">
                     <p class="text-muted small mb-1">Click on a bar to mark it for removal (turns <span style="color: #ea2c38; font-weight: bold;">Red</span>), then click "Recalculate".</p>
@@ -103,7 +122,9 @@
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
                     <span class="ps-2 fw-bold">Distortion Map</span>
-                    <button class="btn btn-sm btn-light fw-bold text-dark" id="btnExportDistortion" onclick="exportDistortion()" disabled>Export Image</button>
+                    <div>
+                        <button class="btn btn-info-icon me-2" onclick="showInfoModal('info_distortion.html')"><i class="bi bi-info-lg"></i></button><button class="btn btn-sm btn-light fw-bold text-dark" id="btnExportDistortion" onclick="exportDistortion()" disabled>Export Image</button>
+                    </div>
                 </div>
                 <div class="card-body border">
                     <div class="d-flex justify-content-end mb-2">
@@ -121,8 +142,9 @@
             </div>
 
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-dark text-white p-2">
+                <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
                     <span class="ps-2 fw-bold">Detections Viewer</span>
+                    <button class="btn btn-info-icon" onclick="showInfoModal('info_detections.html')"><i class="bi bi-info-lg"></i></button>
                 </div>
                 <div class="card-body border">
 
@@ -154,8 +176,9 @@
             </div>
 
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-dark text-white p-2">
-                    <span class="ps-2 fw-bold">3D Checkerboard Positions</span>
+                <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
+                    <span class="ps-2 fw-bold">3D Board Positions (Extrinsics)</span>
+                    <button class="btn btn-info-icon" onclick="showInfoModal('info_extrinsics.html')"><i class="bi bi-info-lg"></i></button>
                 </div>
                 <div class="card-body border">
                     <p class="text-muted small mb-1">Interactive 3D view of the camera (origin) and calibration boards.</p>
@@ -177,6 +200,20 @@
       <div class="modal-body position-relative">
         <button class="btn btn-sm btn-success position-absolute top-0 end-0 m-3 fw-bold" onclick="copyCodeSnippet()">Copy Code</button>
         <pre class="bg-light p-3 rounded mt-4 border border-secondary" style="max-height: 500px; overflow-y: auto;"><code id="codeSnippetContent"></code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="infoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content border-0">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title fw-bold" id="infoModalTitle">Information</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body info-content" id="infoModalContent" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Content will be loaded here -->
       </div>
     </div>
   </div>
@@ -248,6 +285,26 @@
     const detZoom = new ZoomPanController('imageContainer', 'detectionImg');
     const distZoom = new ZoomPanController('distContainer', 'distImg');
 
+    function toggleDetectorOptions() {
+        const detectorType = document.getElementById('detectorType').value;
+        const charucoOptions = document.getElementById('charucoOptions');
+        const boardSizeGroup = document.getElementById('boardSizeGroup');
+        const absoluteCheckGroup = document.getElementById('absoluteCheckGroup');
+        const checkerSizeLabel = document.getElementById('checkerSizeLabel');
+
+        if (detectorType === 'charuco') {
+            charucoOptions.classList.remove('d-none');
+            boardSizeGroup.classList.add('d-none');
+            absoluteCheckGroup.classList.add('d-none'); // Absolute is not used for ChArUco
+            checkerSizeLabel.innerText = "Square Size (mm)";
+        } else { // checkerboard
+            charucoOptions.classList.add('d-none');
+            boardSizeGroup.classList.remove('d-none');
+            absoluteCheckGroup.classList.remove('d-none');
+            checkerSizeLabel.innerText = "Square Size (mm)";
+        }
+    }
+
     // --- UI Helpers ---
     function setStatus(text, colorClass) {
         const badge = document.getElementById('statusBadge');
@@ -273,7 +330,10 @@
         const formData = new FormData();
         for (let file of fileInput.files) formData.append('files', file);
         formData.append('checker_size', document.getElementById('checkerSize').value);
-        formData.append('absolute', document.getElementById('absoluteCheck').checked);
+        formData.append('detector_type', document.getElementById('detectorType').value);
+        formData.append('charuco_preset', document.getElementById('charucoPreset').value);
+        formData.append('absolute', document.getElementById('detectorType').value === 'checkerboard' && document.getElementById('absoluteCheck').checked);
+
         const pixelSizeInput = document.getElementById('pixelSize').value;
         if (pixelSizeInput) {
             formData.append('pixel_size', pixelSizeInput);
@@ -802,6 +862,27 @@ if __name__ == "__main__":
     main()`;
 
         displayModal("Python: Headless Batch Calibration", script);
+    }
+
+    // --- Info Modal ---
+    let infoModal;
+    async function showInfoModal(infoFile) {
+        if (!infoModal) {
+            infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
+        }
+
+        const contentDiv = document.getElementById('infoModalContent');
+        contentDiv.innerHTML = '<p class="text-center">Loading...</p>';
+        infoModal.show();
+
+        try {
+            const response = await fetch(`/api/info/${infoFile}`);
+            const html = await response.text();
+            contentDiv.innerHTML = html;
+        } catch (error) {
+            contentDiv.innerHTML = '<p class="text-center text-danger">Could not load information.</p>';
+            console.error("Failed to fetch info content:", error);
+        }
     }
 </script>
 <footer class="container text-center mt-5 mb-4 border-top pt-4">
