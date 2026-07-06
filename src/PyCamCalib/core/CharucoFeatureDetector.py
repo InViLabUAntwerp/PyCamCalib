@@ -1,10 +1,19 @@
 from typing import Tuple, Optional
 import numpy as np
 import numpy.typing as npt
-from PyCamCalib.core.Charuco import CharucoDetector  # Import your CharucoDetector class
-from PyCamCalib.core.feature_detection import FeatureDetector, CalibrationFeature  # Import original base class
-import cv2 as cv2
+import cv2
 import cv2.aruco as aruco
+
+# Import your CharucoDetector and the compatibility helpers we created
+from PyCamCalib.core.Charuco import (
+    CharucoDetector,
+    get_aruco_dict,
+    create_charuco_board,
+    interpolate_corners,
+    get_board_dict
+)
+from PyCamCalib.core.feature_detection import FeatureDetector, CalibrationFeature
+
 
 class CharucoFeatureDetector(FeatureDetector):
     # Registry of standard boards
@@ -23,8 +32,19 @@ class CharucoFeatureDetector(FeatureDetector):
     @classmethod
     def get_preset_board(cls, name: str) -> aruco.CharucoBoard:
         cfg = cls.PRESETS[name]
-        aruco_dict = aruco.getPredefinedDictionary(cfg["dict"])
-        board = aruco.CharucoBoard(cfg["size"], cfg["square_len"], cfg["marker_len"], aruco_dict)
+
+        # Use our helper for cross-version dictionary retrieval
+        aruco_dict = get_aruco_dict(cfg["dict"])
+
+        # Use our helper for cross-version board creation
+        board = create_charuco_board(
+            cfg["size"][0],
+            cfg["size"][1],
+            cfg["square_len"],
+            cfg["marker_len"],
+            aruco_dict
+        )
+
         if hasattr(board, 'setLegacyPattern'):
             board.setLegacyPattern(cfg["legacy"])
         return board
@@ -35,9 +55,10 @@ class CharucoFeatureDetector(FeatureDetector):
         final_board = board
         if final_board is None and preset is not None:
             final_board = self.get_preset_board(preset)
+
         self.charuco_detector = CharucoDetector(board=final_board)
         self.use_charuco = True
-        self.auto_detected_board = None # To hold the board if auto-detected
+        self.auto_detected_board = None  # To hold the board if auto-detected
 
     def detect_feature(self, image: npt.NDArray) -> CalibrationFeature:
         # 1. Ensure we have a board
@@ -53,25 +74,33 @@ class CharucoFeatureDetector(FeatureDetector):
 
         board_to_use = self.auto_detected_board if self.auto_detected_board is not None else self.charuco_detector.board
 
-        # 2. Marker detection
+        # 2. Marker detection (We changed the base class to return ids first, then corners)
         marker_ids, marker_corners = self.charuco_detector.detect_aruco_markers(image)
 
         # 3. Interpolate corners
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
 
         if marker_ids is not None and len(marker_ids) > 0:
-            retval, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+
+            # Use our helper to route to the correct interpolation function
+            retval, charuco_corners, charuco_ids = interpolate_corners(
                 marker_corners, marker_ids, gray, board_to_use
             )
 
-            if retval > 0 and charuco_corners is not None and len(charuco_ids) > 0:
+            if retval > 0 and charuco_corners is not None and charuco_ids is not None and len(charuco_ids) > 0:
                 # MANDATORY FORMAT FIX: Ensure float32 and shape (N, 2)
                 image_points = charuco_corners.reshape(-1, 2).astype(np.float32)
 
-                # Fetch board object points
-                all_obj_points = board_to_use.getChessboardCorners()
+                # Cross-version fix for retrieving 3D points
+                # OpenCV 4.7+ uses getters, older versions use properties
+                if hasattr(board_to_use, 'getChessboardCorners'):
+                    all_obj_points = board_to_use.getChessboardCorners()
+                else:
+                    all_obj_points = board_to_use.chessboardCorners
+
                 # Use flatten() to ensure indexing works regardless of array shape
                 object_points_3d = all_obj_points[charuco_ids.flatten()]
+
                 if object_points_3d.shape[1] == 4:
                     object_points_3d = object_points_3d[:, :3]
                 if object_points_3d.shape[1] == 2:
@@ -80,9 +109,6 @@ class CharucoFeatureDetector(FeatureDetector):
 
                 # 4. Final cast
                 object_points = object_points_3d.astype(np.float32)
-
-
-                # Scale by square size: not needed, aruco fixes this: 0705 double check!
 
                 return CalibrationFeature(
                     score=2,
@@ -94,7 +120,12 @@ class CharucoFeatureDetector(FeatureDetector):
 
 
 def extract_and_print_board():
-    image = cv2.imread("test.jpg")  # Use your best image
+    image = cv2.imread("test.jpg")
+
+    if image is None:
+        print("Test image not found for extract_and_print_board. Skipping...")
+        return
+
     detector = CharucoFeatureDetector(space_between_features=14.0)
 
     # 1. Force the auto-detection
@@ -105,21 +136,30 @@ def extract_and_print_board():
     )
 
     if board:
-        # 2. Extract parameters
-        # Note: Depending on your OpenCV version, these might be attributes or methods
+        # 2. Extract parameters safely across versions
         print("--- BOARD FOUND ---")
-        print(f"Chessboard Size: {board.getChessboardSize()}")
-        print(f"Square Length: {board.getSquareLength()}")
-        print(f"Marker Length: {board.getMarkerLength()}")
+
+        c_size = board.getChessboardSize() if hasattr(board, 'getChessboardSize') else board.chessboardSize
+        sq_len = board.getSquareLength() if hasattr(board, 'getSquareLength') else board.squareLength
+        m_len = board.getMarkerLength() if hasattr(board, 'getMarkerLength') else board.markerLength
+
+        print(f"Chessboard Size: {c_size}")
+        print(f"Square Length: {sq_len}")
+        print(f"Marker Length: {m_len}")
 
         # Dictionary info
-        d = board.getDictionary()
-        print(f"Dictionary Type: {d.bytesList.shape} bits")
+        d = get_board_dict(board)
+        if hasattr(d, 'bytesList'):
+            print(f"Dictionary Type: {d.bytesList.shape} bits")
+        else:
+            print("Dictionary details loaded (bytesList hidden in this CV2 version).")
 
         # Legacy Pattern check (try both common patterns)
         print("Check your board for a white/black square at 0,0 and update 'legacy' accordingly.")
     else:
         print("Board auto-detection failed.")
+
+
 def test_charuco_pipeline():
     # 1. Load your test image
     image_path = "test.jpg"
@@ -130,12 +170,10 @@ def test_charuco_pipeline():
         return
 
     # 2. Initialize the detector
-    # We pass None for the board to trigger the Auto-Detector
     print("Initializing CharucoFeatureDetector...")
     detector = CharucoFeatureDetector(space_between_features=14.0)
 
     # 3. Detect features
-    # This call will trigger auto_detect_board internally on the first run
     print("Running detection...")
     feature = detector.detect_feature(image)
 
