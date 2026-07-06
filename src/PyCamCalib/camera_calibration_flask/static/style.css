@@ -107,3 +107,9 @@ h2 {
 .info-content hr {
     border-top: 1px solid var(--fti-pastel);
 }
+
+/* Fix for dropdowns appearing behind other elements */
+.settings-panel {
+    position: relative; /* Establishes a stacking context */
+    z-index: 10;      /* Ensures this column is on top */
+}
