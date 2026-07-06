@@ -350,7 +350,7 @@ def load_example_data():
     try:
         # --- Get settings from the request body ---
         settings = request.json
-        checker_size = float(settings.get('checker_size', 30.0)) # Default to 30mm for the example
+        checker_size = float(settings.get('checker_size', 14.0)) # Default to 14mm for the example
         state.absolute = settings.get('absolute', False)
         pixel_size_str = settings.get('pixel_size')
         state.pixel_size_um = float(pixel_size_str) if pixel_size_str else None

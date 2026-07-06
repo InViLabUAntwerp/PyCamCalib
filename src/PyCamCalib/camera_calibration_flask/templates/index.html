@@ -78,6 +78,7 @@
                         <label class="form-label text-dark fw-bold">Upload Images</label>
                         <input type="file" class="form-control border-secondary" id="imageFiles" multiple accept=".jpg,.jpeg,.png,.bmp,.tiff">
                     </div>
+                    <button class="btn btn-outline-primary w-100 mb-2" onclick="loadExampleData()">Load Example Data</button>
                     <button class="btn btn-success w-100 fw-bold" id="btnCalibrate" onclick="initialCalibration()">1. Initial Calibrate</button>
                     <button class="btn btn-danger w-100 mt-2 fw-bold" id="btnRecalculate" onclick="removeOutliersAndRecalculate()" disabled>2. Remove Outliers & Recalculate</button>
                     <button class="btn btn-outline-secondary w-100 mt-2" id="btnReset" onclick="resetOutliers()" disabled>Reset All Images</button>
@@ -316,6 +317,50 @@
         const el = document.getElementById(id);
         if (msg) { el.innerText = msg; el.classList.remove('d-none'); }
         else { el.classList.add('d-none'); }
+    }
+
+    async function loadExampleData() {
+        setStatus("Loading Example Data...", "bg-warning text-dark");
+        showAlert('errorAlert', null);
+        showAlert('warningAlert', null);
+
+        excludedIndices = [];
+        pendingRemoval = [];
+
+        // Set default values for the example data in the UI
+        document.getElementById('checkerSize').value = 14.0;
+        document.getElementById('pixelSize').value = 3.45;
+        document.getElementById('infoInput').value = "acA1440-220uc Example";
+        document.getElementById('detectorType').value = 'checkerboard';
+        toggleDetectorOptions(); // Ensure UI reflects checkerboard selection
+
+        // Gather current settings from the UI to send to the backend
+        const settings = {
+            checker_size: document.getElementById('checkerSize').value,
+            absolute: document.getElementById('absoluteCheck').checked,
+            pixel_size: document.getElementById('pixelSize').value || null,
+            info: document.getElementById('infoInput').value || null,
+            board_width: document.getElementById('boardWidth').value || null,
+            board_height: document.getElementById('boardHeight').value || null
+        };
+
+        try {
+            const res = await fetch(`/api/load-example`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Tab-ID': TAB_ID },
+                body: JSON.stringify(settings)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Server error");
+
+            handleCalibrationSuccess(data);
+            document.getElementById('btnRecalculate').disabled = false;
+            document.getElementById('btnReset').disabled = false;
+            document.getElementById('btnExport').disabled = false;
+            document.getElementById('btnExportDistortion').disabled = false;
+        } catch (error) {
+            showAlert('errorAlert', error.message); setStatus("Error", "bg-danger");
+        }
     }
 
     // --- API Interactions ---
