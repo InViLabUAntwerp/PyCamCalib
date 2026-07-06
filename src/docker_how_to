@@ -2,8 +2,8 @@
 go to src folder in terminal
 
 sudo docker build -t invilab-calib .
-sudo docker run -d -p 8080:8000 --name my-calibration-server invilab-calib
-
+#old: sudo docker run -d -p 8080:8000 --name my-calibration-server invilab-calib
+sudo docker run -d -p 8080:8000 --shm-size=2g --name my-calibration-server invilab-calib # more ram
 if needed
 sudo docker logs my-calibration-server
 sudo docker rm -f my-calibration-server

@@ -1,0 +1,17 @@
+h5py
+matplotlib
+numpy
+opencv-python
+opencv-contrib-python
+pyqtgraph
+PySide6
+Sphinx
+sphinx-rtd-theme
+sphinx-autodoc-typehints
+pipreqs
+build
+rx
+libcbdetect
+PyCBD
+CTPv
+gunicorn
