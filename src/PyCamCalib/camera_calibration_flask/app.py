@@ -10,6 +10,7 @@ import numpy as np
 import io
 import matplotlib
 matplotlib.use('Agg') # Force matplotlib to run in background without windows
+import glob
 import matplotlib.pyplot as plt
 
 from flask import Flask, render_template, request, jsonify, session, send_from_directory
@@ -334,6 +335,83 @@ def calibrate_initial():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/load-example', methods=['POST'])
+def load_example_data():
+    """Loads the example checkerboard images and runs an initial calibration."""
+    state = get_user_state()
+
+    # Reset state for a clean run
+    state.calibrator = CameraCalibrator()
+    state.calibration_parameters = CameraParameters()
+    state.image_names = []
+    state.image_array = None
+
+    try:
+        # --- Get settings from the request body ---
+        settings = request.json
+        checker_size = float(settings.get('checker_size', 30.0)) # Default to 30mm for the example
+        state.absolute = settings.get('absolute', False)
+        pixel_size_str = settings.get('pixel_size')
+        state.pixel_size_um = float(pixel_size_str) if pixel_size_str else None
+        state.info = settings.get('info') or "Example Dataset"
+
+        board_width = settings.get('board_width')
+        board_height = settings.get('board_height')
+        board_size = (int(board_width), int(board_height)) if board_width and board_height else None
+
+        # --- Load example images from static folder ---
+        example_dir = os.path.join(app.static_folder, 'examples', 'checkerboard')
+        if not os.path.isdir(example_dir):
+            return jsonify({"error": "Example image directory not found on server."}), 404
+
+        # Using glob to find all common image types
+        image_paths = sorted(glob.glob(os.path.join(example_dir, '*.png')))
+        if not image_paths:
+            return jsonify({"error": "No example images found in the directory."}), 404
+
+        n_images = len(image_paths)
+        for idx, path in enumerate(image_paths):
+            image = cv2.imread(path)
+            if image is None:
+                continue # Skip if an image fails to load
+
+            if state.image_array is None:
+                state.image_array = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
+
+            state.image_array[..., idx] = image
+            state.image_names.append(os.path.basename(path))
+
+        # --- Perform Calibration ---
+        state.calibration_parameters = state.calibrator.calibrate(
+            image_array=state.image_array,
+            space_between_features=checker_size,
+            board_size=board_size,
+            detector_type="checkerboard", # Example data is checkerboard
+            detector_params={},
+            absolute=state.absolute
+        )
+
+        # --- Post-calibration processing ---
+        if board_size is None and state.calibrator.feature_list:
+            for feature in state.calibrator.feature_list:
+                if feature.score > 0 and feature.object_points is not None and len(feature.object_points) > 0:
+                    xs = np.unique(np.round(feature.object_points[:, 0] / checker_size))
+                    ys = np.unique(np.round(feature.object_points[:, 1] / checker_size))
+                    state.board_size = (len(xs), len(ys))
+                    break
+        else:
+            state.board_size = board_size
+
+        if state.pixel_size_um is not None:
+            state.calibration_parameters.pixel_size = state.pixel_size_um / 1000.0
+        if state.info is not None:
+            state.calibration_parameters.info = state.info
+
+        return jsonify(format_calibration_response(state.calibration_parameters, state.calibrator, state))
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred while processing example data: {str(e)}"}), 500
 
 @app.route('/api/calibrate/recalculate', methods=['POST'])
 def calibrate_recalculate():
