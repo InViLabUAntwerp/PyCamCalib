@@ -2,6 +2,7 @@ h5py
 matplotlib
 numpy
 opencv-python
+opencv-contrib-python
 pyqtgraph
 PySide6
 Sphinx
