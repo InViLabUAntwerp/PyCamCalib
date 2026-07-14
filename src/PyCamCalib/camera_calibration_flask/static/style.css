@@ -113,3 +113,9 @@ h2 {
     position: relative; /* Establishes a stacking context */
     z-index: 10;      /* Ensures this column is on top */
 }
+
+/* Style for the calibration counter in the footer */
+.calibration-counter {
+    color: #6c757d; /* Muted gray color */
+    font-weight: normal;
+}

@@ -1,9 +1,21 @@
-#Build
-go to src folder in terminal
+# InViLab Calibration Toolbox - Docker Instructions
+# =================================================
 
+# --- Build the Docker Image ---
+# Navigate to the 'src' directory where your Dockerfile is located.
+# Then, run the build command.
 sudo docker build -t invilab-calib .
-#old: sudo docker run -d -p 8080:8000 --name my-calibration-server invilab-calib
-sudo docker run -d -p 8080:8000 --shm-size=2g --name my-calibration-server invilab-calib # more ram
-if needed
+
+# --- Run the Docker Container ---
+# This command runs the container in detached mode (-d), maps port 8080 on your
+# computer to port 8000 in the container, increases shared memory for performance,
+# and gives the container a name.
+#
+# NEW: The -v flag mounts a host directory into the container for persistent data.
+# It maps a folder named 'invilab-data' in your current directory to '/data' inside the container.
+# This is where the calibration count log will be stored.
+sudo docker run -d -p 8080:8000 --shm-size=2g -v "$(pwd)/invilab-data:/data" --name my-calibration-server invilab-calib
+
+# --- Useful Docker Commands ---
 sudo docker logs my-calibration-server
 sudo docker rm -f my-calibration-server

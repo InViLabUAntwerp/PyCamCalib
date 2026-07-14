@@ -23,7 +23,11 @@ from PyCamCalib.core.exceptions import ImageError, CalibrationError
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+
+# --- Configuration for persistent data ---
+LOG_DIR = os.environ.get('INVILAB_DATA_DIR', '/data')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 
 
 # State class to mimic the PySide6 MainWindow state.
@@ -37,6 +41,24 @@ class AppState:
         self.pixel_size_um = None
         self.info = None
         self.board_size = None
+
+
+# --- Calibration Counter Logic ---
+COUNT_FILE_PATH = os.path.join(LOG_DIR, 'calibration_count.log')
+
+def get_calibration_count():
+    """Reads the current calibration count from the log file."""
+    try:
+        with open(COUNT_FILE_PATH, 'r') as f:
+            return int(f.read().strip())
+    except (IOError, ValueError):
+        return 0
+
+def increment_calibration_count():
+    """Increments and writes the new calibration count."""
+    count = get_calibration_count() + 1
+    with open(COUNT_FILE_PATH, 'w') as f:
+        f.write(str(count))
 
 
 # --- User & State Tracking via Tab ID ---
@@ -221,7 +243,8 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    calibration_count = get_calibration_count()
+    return render_template('index.html', calibration_count=calibration_count)
 
 @app.route('/api/info/<path:filename>')
 def get_info_html(filename):
@@ -233,6 +256,9 @@ def get_info_html(filename):
 
 @app.route('/api/calibrate/initial', methods=['POST'])
 def calibrate_initial():
+
+    # This is a new calibration, so increment the counter.
+    increment_calibration_count()
 
     if 'files' not in request.files:
         return jsonify({"error": "No images provided"}), 400
@@ -346,6 +372,9 @@ def load_example_data():
     state.calibration_parameters = CameraParameters()
     state.image_names = []
     state.image_array = None
+
+    # This is also a new calibration, so increment the counter.
+    increment_calibration_count()
 
     try:
         # --- Get settings from the request body ---
