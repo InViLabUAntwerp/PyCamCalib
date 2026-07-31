@@ -62,6 +62,7 @@ def increment_calibration_count():
 
 
 # --- User & State Tracking via Tab ID ---
+# --- User & State Tracking via Tab ID ---
 active_tabs = {}
 user_states = {}  # Map Tab IDs to their own isolated AppState
 MAX_USERS = 8
@@ -69,18 +70,15 @@ USER_TIMEOUT = 300  # 5 minutes of inactivity before a slot opens up
 
 
 def get_tab_id():
-    """Retrieves the Tab ID sent by the frontend, fallback to session if missing."""
-    tab_id = request.headers.get('X-Tab-ID')
-    if not tab_id:
-        if 'session_id' not in session:
-            session['session_id'] = uuid.uuid4().hex
-        return session['session_id']
-    return tab_id
+    """Retrieves the Tab ID sent by the frontend header."""
+    return request.headers.get('X-Tab-ID')
 
 
 def get_user_state():
     """Retrieves or creates a unique state for the current Tab ID."""
     tid = get_tab_id()
+    if not tid:
+        return AppState()  # Return temporary unstacked state if no tab ID
     if tid not in user_states:
         user_states[tid] = AppState()
     return user_states[tid]
@@ -88,23 +86,27 @@ def get_user_state():
 
 @app.before_request
 def track_users():
-    if request.endpoint == 'static':
+    # 1. Skip static assets, favicons, and page HTML loads (including Docker health checks)
+    if request.endpoint in ('static', 'index') or request.path == '/favicon.ico':
         return
 
+    # 2. Only track actual interactive API calls sent with X-Tab-ID header from frontend JS
     tid = get_tab_id()
+    if not tid:
+        return  # Do not register headerless requests in active_tabs!
+
     current_time = time.time()
 
-    # 1. Clean up old inactive tabs and their heavy memory states
+    # 3. Clean up old inactive tabs and their heavy memory states
     expired_tids = [k for k, v in active_tabs.items() if current_time - v > USER_TIMEOUT]
     for k in expired_tids:
         del active_tabs[k]
         if k in user_states:
-            del user_states[k]  # Free up memory!
+            del user_states[k]  # Free up OpenCV memory!
 
-    # 2. Register or update the current tab
+    # 4. Enforce maximum user limit for active Tab IDs
     if tid not in active_tabs and len(active_tabs) >= MAX_USERS:
-        # Enforce maximum user limit
-        if request.endpoint not in ('index', 'get_status'):
+        if request.endpoint != 'get_status':
             return jsonify({"error": "Server is at maximum capacity. Please wait for a slot."}), 429
     else:
         active_tabs[tid] = current_time
@@ -114,9 +116,10 @@ def track_users():
 def get_status():
     tid = get_tab_id()
     count = len(active_tabs)
-    # If the server is full and the tab isn't already inside, they are waitlisted
-    is_waitlisted = (count >= MAX_USERS and tid not in active_tabs)
+    # If the server is full and the tab isn't already registered, they are waitlisted
+    is_waitlisted = (count >= MAX_USERS and tid not in active_tabs) if tid else (count >= MAX_USERS)
     return jsonify({"count": count, "max": MAX_USERS, "waitlisted": is_waitlisted})
+
 @app.route('/api/disconnect', methods=['POST'])
 def disconnect():
     """Instantly frees up a user slot when they close the tab."""
