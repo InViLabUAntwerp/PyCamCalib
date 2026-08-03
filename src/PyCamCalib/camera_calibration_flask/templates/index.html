@@ -235,12 +235,8 @@
 
     // --- Instantly Free Up Server Slot on Tab Close ---
     // We use pagehide/visibilitychange to catch tab closures and page unloads
-    window.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'hidden') {
-            // sendBeacon fires reliably during page unload.
-            // We pass the TAB_ID as a URL parameter because sendBeacon can't set custom headers.
-            navigator.sendBeacon(`/api/disconnect?tid=${TAB_ID}`);
-        }
+    window.addEventListener('pagehide', function (event) {
+        navigator.sendBeacon(`/api/disconnect?tid=${TAB_ID}`);
     });
 
     // --- UAntwerpen Colors for JS ---
@@ -368,12 +364,29 @@
         const fileInput = document.getElementById('imageFiles');
         if (fileInput.files.length === 0) return showAlert('errorAlert', "Please select images first.");
 
-        setStatus("Uploading & Calibrating...", "bg-warning text-dark");
-        showAlert('errorAlert', null); showAlert('warningAlert', null);
+        // --- INSTANT FRONTEND FILE SIZE CHECK ---
+        let totalSizeBytes = 0;
+        for (let i = 0; i < fileInput.files.length; i++) {
+            totalSizeBytes += fileInput.files[i].size;
+        }
 
-        excludedIndices = []; pendingRemoval = [];
+        const maxUploadMB = 50; // Safely hardcoded in JS
+
+        if (totalSizeBytes > (maxUploadMB * 1024 * 1024)) {
+            const currentMB = (totalSizeBytes / (1024 * 1024)).toFixed(1);
+            return showAlert('errorAlert', `Upload blocked: Total file size (${currentMB} MB) exceeds the ${maxUploadMB} MB limit.`);
+        }
+        // ----------------------------------------
+
+        setStatus("Uploading & Calibrating...", "bg-warning text-dark");
+        showAlert('errorAlert', null);
+        showAlert('warningAlert', null);
+
+        excludedIndices = [];
+        pendingRemoval = [];
         const formData = new FormData();
         for (let file of fileInput.files) formData.append('files', file);
+
         formData.append('checker_size', document.getElementById('checkerSize').value);
         formData.append('detector_type', document.getElementById('detectorType').value);
         formData.append('charuco_preset', document.getElementById('charucoPreset').value);
@@ -397,11 +410,23 @@
         try {
             const res = await fetch(`/api/calibrate/initial`, {
                 method: 'POST',
-                headers: { 'X-Tab-ID': TAB_ID },
+                headers: {'X-Tab-ID': TAB_ID},
                 body: formData
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Server error");
+
+            // --- HANDLE SPECIFIC BACKEND ERRORS ---
+            if (!res.ok) {
+                if (res.status === 503) {
+                    // 503 Server Busy / Memory Full -> Show as a warning
+                    setStatus("Waiting for slot...", "bg-warning text-dark");
+                    showAlert('warningAlert', `⏳ ${data.details}`);
+                    return; // Stop execution, let them wait
+                } else {
+                    // Throw a standard error (400, 413, 500)
+                    throw new Error(data.details || data.error || "Server error");
+                }
+            }
 
             handleCalibrationSuccess(data);
             document.getElementById('btnRecalculate').disabled = false;
@@ -409,9 +434,11 @@
             document.getElementById('btnExport').disabled = false;
             document.getElementById('btnExportDistortion').disabled = false;
         } catch (error) {
-            showAlert('errorAlert', error.message); setStatus("Error", "bg-danger");
+            showAlert('errorAlert', error.message);
+            setStatus("Error", "bg-danger");
         }
     }
+
 
     function removeOutliersAndRecalculate() {
         if (pendingRemoval.length === 0) return alert("Select an outlier on the graph first.");

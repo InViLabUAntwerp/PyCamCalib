@@ -20,6 +20,26 @@ from werkzeug.utils import secure_filename
 from PyCamCalib.core.calibration import CameraCalibrator, CameraParameters
 from PyCamCalib.core.exceptions import ImageError, CalibrationError
 
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
+
+# --- EASY CONFIGURATION VARIABLES ---
+MAX_USERS = 8
+USER_TIMEOUT = 300  # 5 minutes of inactivity before a slot opens up
+GLOBAL_MEMORY_LIMIT_MB = 1024  # Total allowed RAM for all unpacked images (1GB)
+MAX_UPLOAD_SIZE_MB = 30        # Max network payload size in Megabytes
+
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+from werkzeug.exceptions import RequestEntityTooLarge
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_size_error(e):
+    return jsonify({"error": f"Upload rejected: Total file size exceeds the {MAX_UPLOAD_SIZE_MB}MB server limit."}), 413
+# ------------------------------------
+
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
@@ -123,11 +143,14 @@ def get_status():
 @app.route('/api/disconnect', methods=['POST'])
 def disconnect():
     """Instantly frees up a user slot when they close the tab."""
-    tid = request.headers.get('X-Tab-ID') or get_tab_id()
+    # Check for the header OR the URL query parameter sent by sendBeacon
+    tid = request.headers.get('X-Tab-ID') or request.args.get('tid')
+
     if tid in active_tabs:
         del active_tabs[tid]
     if tid in user_states:
         del user_states[tid]
+
     return jsonify({"status": "disconnected"}), 200
 def calculate_distortion_map(m, d, sensor_size):
     """Replicates the math from DistortionPlotWidget.plot_distortion to generate an image with arrows."""
@@ -247,8 +270,9 @@ def format_calibration_response(params: CameraParameters, calibrator: CameraCali
 @app.route('/')
 def index():
     calibration_count = get_calibration_count()
-    return render_template('index.html', calibration_count=calibration_count)
-
+    return render_template('index.html',
+                           calibration_count=calibration_count,
+                           max_upload_mb=MAX_UPLOAD_SIZE_MB)
 @app.route('/api/info/<path:filename>')
 def get_info_html(filename):
     """Serves the static HTML info files from the templates/info directory."""
@@ -256,6 +280,15 @@ def get_info_html(filename):
     return send_from_directory('templates/info', filename)
 
 
+def get_total_used_memory_mb(exclude_tid=None):
+    """Calculates total memory currently held in NumPy arrays across all active tabs."""
+    total_bytes = 0
+    for tid, state in user_states.items():
+        if exclude_tid and tid == exclude_tid:
+            continue  # Don't count the current tab's old memory (since it's about to be overwritten)
+        if state.image_array is not None:
+            total_bytes += state.image_array.nbytes
+    return total_bytes / (1024 * 1024)
 
 @app.route('/api/calibrate/initial', methods=['POST'])
 def calibrate_initial():
@@ -314,10 +347,36 @@ def calibrate_initial():
         if image is None:
             return jsonify({"error": f"Failed to load image: {filename}"}), 400
 
+        # --- PRE-ALLOCATION MEMORY CHECK ---
         if state.image_array is None:
+            # 1. Calculate how much RAM this specific job will need
+            required_memory_mb = (image.nbytes * n_images) / (1024 * 1024)
+
+            # 2. Check if a single user is exceeding the absolute maximum limit on their own
+            if required_memory_mb > GLOBAL_MEMORY_LIMIT_MB:
+                return jsonify({
+                    "error": "Dataset Too Large",
+                    "details": f"Your dataset requires {required_memory_mb:.0f}MB of uncompressed RAM, which exceeds the absolute server limit of {GLOBAL_MEMORY_LIMIT_MB}MB. Please downscale your images or reduce the amount."
+                }), 413
+
+            # 3. Calculate what other active users are currently holding in RAM
+            current_used_mb = get_total_used_memory_mb(exclude_tid=get_tab_id())
+
+            # 4. If the shared pool is full, reject the allocation and ask them to wait
+            if (current_used_mb + required_memory_mb) > GLOBAL_MEMORY_LIMIT_MB:
+                available_mb = GLOBAL_MEMORY_LIMIT_MB - current_used_mb
+                return jsonify({
+                    "error": "Server Memory Full",
+                    "details": f"The server is currently processing other users. Your dataset needs {required_memory_mb:.0f}MB, but only {available_mb:.0f}MB is available. Please wait a minute for them to finish and click Calibrate again."
+                }), 503  # 503: Service Unavailable
+
+            # 5. If there is enough memory, finally allocate the NumPy array!
             state.image_array = np.zeros((image.shape + (n_images,)), dtype=image.dtype)
+        # -----------------------------------
+
         elif image.shape != state.image_array.shape[:-1]:
-            return jsonify({"error": f"Image dimensions mismatch for {filename}. All images must be exactly the same size."}), 400
+            return jsonify(
+                {"error": f"Image dimensions mismatch for {filename}. All images must be exactly the same size."}), 400
 
         state.image_array[..., idx] = image
         state.image_names.append(filename)
