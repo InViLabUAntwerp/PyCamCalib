@@ -14,8 +14,8 @@ sudo docker build -t invilab-calib .
 # NEW: The -v flag mounts a host directory into the container for persistent data.
 # It maps a folder named 'invilab-data' in your current directory to '/data' inside the container.
 # This is where the calibration count log will be stored.
-sudo docker run -d -p 8080:8000 --shm-size=2g -v "$(pwd)/invilab-data:/data" --name my-calibration-server invilab-calib
-
+#sudo docker run -d -p 8080:8000 --shm-size=2g -v "$(pwd)/invilab-data:/data" --name my-calibration-server invilab-calib
+sudo docker run -d -p 8080:8000 --shm-size=2g -e INVILAB_DATA_DIR=/data -v "$(pwd)/invilab-data:/data" --name my-calibration-server invilab-calib
 # --- Useful Docker Commands ---
 sudo docker logs my-calibration-server
 sudo docker rm -f my-calibration-server

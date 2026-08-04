@@ -36,5 +36,5 @@ ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
 # Run the app using Gunicorn (as defined in your comment)
-CMD ["gunicorn", "--chdir", "PyCamCalib/camera_calibration_flask/", "-w", "1", "--threads", "4", "-b", "0.0.0.0:8000", "app:app"]
+CMD ["gunicorn", "--chdir", "PyCamCalib/camera_calibration_flaskv2/", "-w", "1", "--threads", "4", "-b", "0.0.0.0:8000", "app:app"]
 #gunicorn --chdir PyCamCalib/camera_calibration_flask/ -w 1 --threads 4 -b 0.0.0.0:8000 app:app

@@ -92,16 +92,15 @@ const ServerBackend = {
         return data;
     },
     loadExample: async (settings) => {
-    // CHANGE THIS URL from `/api/load-example` to `/api/example-files`
-    const res = await fetch(`/api/example-files`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tab-ID': TAB_ID },
-        body: JSON.stringify(settings)
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    return data;
-}
+        const res = await fetch(`/api/example-files`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Tab-ID': TAB_ID },
+            body: JSON.stringify(settings)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        return data;
+    }
 };
 
 const LocalBackend = {
@@ -144,7 +143,7 @@ if '.' not in sys.path: sys.path.append('.')
 
             eb.innerText = "Booting Logic Engine...";
 
-            // Restored clean python string without dangerous minification
+            // Restored clean python string without dangerous minification and WITH the 907 MB RAM spike fix
             await window.pyodide.runPythonAsync(`
 import os
 import sys
@@ -447,21 +446,42 @@ def py_get_detection_image(index):
 
 def py_calibrate_initial(file_bytes_list, file_names, settings):
     state.__init__()
-    images = []
-    for b in file_bytes_list:
-        decoded = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
-        if decoded is not None:
-            images.append(decoded)
-            
-    if not images:
-        return json.dumps({"error": "No valid images"})
-        
-    state.image_names = list(file_names)
-    h, w, c = images[0].shape
-    state.image_array = np.zeros((h, w, c, len(images)), dtype=images[0].dtype)
-    for i, img in enumerate(images):
-        state.image_array[..., i] = img
     
+    if not file_bytes_list:
+        return json.dumps({"error": "No files provided"})
+        
+    first_img = cv2.imdecode(np.frombuffer(file_bytes_list[0], np.uint8), cv2.IMREAD_COLOR)
+    if first_img is None:
+        return json.dumps({"error": "Failed to decode the first image. Ensure it is a valid format."})
+        
+    h, w, c = first_img.shape
+    n_images = len(file_bytes_list)
+    
+    try:
+        state.image_array = np.zeros((h, w, c, n_images), dtype=first_img.dtype)
+    except MemoryError:
+        req_mb = (h * w * c * n_images) / (1024 * 1024)
+        return json.dumps({"error": f"Browser RAM Limit Reached: Your {n_images} images require {req_mb:.0f}MB of continuous browser memory. Please use fewer images, downscale them, or switch to Server Compute mode."})
+    except Exception as e:
+        return json.dumps({"error": f"Allocation Error: {str(e)}"})
+    
+    actual_count = 0
+    state.image_names = []
+    
+    for i, b in enumerate(file_bytes_list):
+        img = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
+        if img is not None and img.shape == (h, w, c):
+            state.image_array[..., actual_count] = img
+            state.image_names.append(file_names[i])
+            actual_count += 1
+            
+    if actual_count == 0:
+        state.image_array = None
+        return json.dumps({"error": "No valid images could be loaded."})
+        
+    if actual_count < n_images:
+        state.image_array = state.image_array[..., :actual_count]
+        
     dt = settings.get('detector_type', 'checkerboard')
     cs = float(settings.get('checker_size', 1.0))
     state.absolute = bool(settings.get('absolute', False))

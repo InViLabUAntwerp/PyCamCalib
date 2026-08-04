@@ -3,68 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InViLab Camera Calibration - Start</title>
+    <title>InViLab Camera Calibration</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        .hover-card { transition: transform 0.2s ease, box-shadow 0.2s ease; cursor: pointer; text-decoration: none; color: inherit;}
-        .hover-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important; }
+        .option-card { transition: all 0.15s ease-in-out; cursor: pointer; text-decoration: none; color: inherit; }
+        .option-card:hover { border-color: #002e65 !important; transform: translateY(-2px); }
         .ua-blue { color: #002e65; }
+        .card { border-radius: 0.5rem; }
     </style>
 </head>
 <body class="bg-light">
 
-<div class="container mt-5">
-    <div class="text-center mb-5">
-        <img src="{{ url_for('static', filename='Logo_InViLab_2023_Slogan_horizontal_color.svg') }}" alt="InViLab Logo" style="height: 80px;" class="mb-4">
+<div class="container py-5">
+    <div class="text-center mb-4">
+        <img src="{{ url_for('static', filename='Logo_InViLab_2023_Slogan_horizontal_color.svg') }}" alt="InViLab Logo" style="height: 60px;" class="mb-3">
         <h1 class="fw-bold ua-blue">Camera Calibration Pipeline</h1>
-        <p class="text-muted fs-5">Select your compute engine to begin</p>
+        <p class="text-muted">Choose an environment to run the calibration tool</p>
+    </div>
+
+    <!-- EXPLANATION SECTION -->
+    <div class="row justify-content-center mb-4">
+        <div class="col-md-10">
+            <div class="card border-0 shadow-sm bg-white p-3 text-secondary small">
+                <p class="mb-2"><strong>Why are there two runtime options?</strong></p>
+                <ul class="mb-0 ps-3">
+                    <li class="mb-1"><strong>Browser Runtime (Preferred):</strong> This option runs entirely inside your browser memory using Pyodide. We strongly encourage using this if possible because it uses your own device's compute and memory rather than costing us money to run on our servers. However, because it is more difficult to maintain, it may occasionally lack newer features.</li>
+                    <li><strong>Flask Backend Server:</strong> This option utilizes the compute and memory of our server, which incurs financial costs for us. To manage these server expenses and prevent system overload, this path has strict limitations on uploads and concurrent users.</li>
+                </ul>
+            </div>
+        </div>
     </div>
 
     <div class="row g-4 justify-content-center">
-        <!-- LOCAL WASM MODE -->
+        <!-- LOCAL BROWSER RUNTIME (PREFERRED) -->
         <div class="col-md-5">
-            <a href="/app/local" class="card shadow-sm border-0 h-100 hover-card">
-                <div class="card-body p-5 text-center">
-                    <i class="bi bi-cpu fs-1 text-success mb-3"></i>
-                    <h3 class="fw-bold">Local Edge Compute</h3>
-                    <span class="badge bg-success mb-3">WebAssembly</span>
-                    <p class="text-muted">Runs Python directly inside your browser memory using Pyodide. No data leaves your machine.</p>
-                    <ul class="text-start text-muted mt-4">
-                        <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Unlimited</strong> file size</li>
-                        <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Unlimited</strong> concurrent users</li>
-                        <li><i class="bi bi-check-circle-fill text-success me-2"></i>100% Private (No uploads)</li>
-                        <li><i class="bi bi-info-circle-fill text-info me-2"></i>Initial load takes ~30 seconds</li>
+            <a href="/app/local" class="card shadow-sm border border-secondary border-2 h-100 option-card bg-white">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-browser-chrome fs-3 text-success me-3"></i>
+                        <div>
+                            <h3 class="h5 fw-bold mb-0">Browser Runtime (WASM)</h3>
+                            <span class="text-success small fw-bold">Preferred Option</span>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-3">Runs locally inside your browser memory using Pyodide. Keeps data private and saves server resources.</p>
+                    <ul class="text-secondary list-unstyled small mb-0">
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> Uses your device's compute & memory</li>
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> No file size or upload limits</li>
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> Note: Harder to maintain, may lack some features</li>
                     </ul>
                 </div>
             </a>
         </div>
 
-        <!-- SERVER MODE -->
+        <!-- SERVER RUNTIME -->
         <div class="col-md-5">
-            <a href="/app/server" class="card shadow-sm border-0 h-100 hover-card">
-                <div class="card-body p-5 text-center">
-                    <i class="bi bi-cloud-arrow-up fs-1 text-primary mb-3"></i>
-                    <h3 class="fw-bold">Cloud Server Compute</h3>
-                    <span class="badge bg-primary mb-3">Flask Backend</span>
-                    <p class="text-muted">Uploads your images to our dedicated server for processing. Best for weaker devices.</p>
-                    <ul class="text-start text-muted mt-4">
-                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>8</strong> concurrent users</li>
-                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>{{ max_upload_mb }}MB</strong> total upload size</li>
-                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>1GB</strong> image RAM limit</li>
-                        <li><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Instant load time</li>
+            <a href="/app/server" class="card shadow-sm border h-100 option-card bg-white">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-server fs-3 text-secondary me-3"></i>
+                        <div>
+                            <h3 class="h5 fw-bold mb-0">Flask Backend Server</h3>
+                            <span class="text-muted small">Hosted processing</span>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-3">Processes images on our server. Consumes our server resources which costs money, so capacity limits apply.</p>
+                    <ul class="text-secondary list-unstyled small mb-0">
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> Max upload size: 50MB</li>
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> Capped at 8 concurrent users</li>
+                        <li class="mb-1"><i class="bi bi-dot text-dark"></i> Instant startup time</li>
                     </ul>
                 </div>
             </a>
+        </div>
+    </div>
+
+    <!-- SELF-HOST / GITHUB BOX -->
+    <div class="row justify-content-center mt-4">
+        <div class="col-md-10">
+            <div class="card border-0 shadow-sm bg-white p-3 text-center">
+                <p class="text-muted small mb-0">
+                    <i class="bi bi-github me-1"></i> Prefer running it yourself as a local Python script or custom GUI? Access the source code and instructions on our
+                    <a href="https://github.com/your-repo/invilab-calibration" target="_blank" class="text-decoration-underline text-secondary fw-bold">GitHub Repository</a>.
+                </p>
+            </div>
         </div>
     </div>
 </div>
 
-<footer class="container text-center mt-5 pt-4">
-    <p class="small fw-bold" style="color: var(--ua-blue);">
-        <span class="calibration-counter">Total calibrations performed: {{ calibration_count }}</span><br>
-        &copy; 2026 Seppe Sels InViLab. All rights reserved.
+<footer class="container text-center mt-4 pt-3 text-muted small border-top">
+    <p class="mb-1">
+        <span>Total calibrations performed: {{ calibration_count }}</span>
     </p>
+    <p class="mb-0">&copy; 2026 Seppe Sels &bull; InViLab</p>
 </footer>
 
 </body>
