@@ -1,0 +1,20 @@
+<h5 class="fw-bold">Intrinsic Parameters</h5>
+<p>These values describe the internal properties of the camera and lens combination. They form the camera matrix.</p>
+<hr>
+
+<p><strong>fx, fy:</strong> The focal length of the lens expressed in pixel units. These values represent the scaling factor between the 3D world and the 2D image plane.</p>
+
+<p><strong>cx, cy:</strong> The principal point, which is the coordinate of the point on the image sensor where the optical axis intersects. It's usually close to the center of the image.</p>
+
+<p><strong>k1, k2, k3:</strong> Radial distortion coefficients. These parameters model the "barrel" or "pincushion" distortion, where straight lines in the real world appear curved in the image, especially near the edges.</p>
+
+<p><strong>p1, p2:</strong> Tangential distortion coefficients. These model distortions that occur when the lens is not perfectly parallel to the image sensor plane.</p>
+
+<p><strong>SD (Standard Deviation):</strong> This value represents the uncertainty or estimated error for each calculated parameter. A lower SD indicates a more confident and reliable measurement.</p>
+
+<p class="mt-3"><strong>Focal Length (mm) & FOV (degrees):</strong> If you provide the camera's pixel size in the settings, these physically intuitive values can be calculated.
+    <ul>
+        <li><strong>Focal Length (mm):</strong> The true focal length of the lens.</li>
+        <li><strong>Field of View (FOV):</strong> The angle of the observable world that the camera can capture.</li>
+    </ul>
+</p>

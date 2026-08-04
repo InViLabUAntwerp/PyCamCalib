@@ -1,0 +1,121 @@
+:root {
+    --ua-blue: #002e65;
+    --ua-red: #ea2c38;
+    --fti-purple: #b10097;
+    --fti-pastel: #e4c1db;
+}
+
+body {
+    background-color: #ffffff !important;
+}
+
+/* Titles and Text */
+h2 {
+    color: var(--ua-blue);
+    font-weight: bold;
+}
+
+/* Buttons */
+.btn-success {
+    background-color: var(--ua-blue) !important;
+    border-color: var(--ua-blue) !important;
+}
+.btn-success:hover {
+    background-color: #001a3d !important;
+}
+
+.btn-danger {
+    background-color: var(--ua-red) !important;
+    border-color: var(--ua-red) !important;
+}
+.btn-danger:hover {
+    background-color: #b51c27 !important;
+}
+
+.btn-outline-dark {
+    color: var(--fti-purple);
+    border-color: var(--fti-purple);
+}
+.btn-outline-dark:hover {
+    background-color: var(--fti-purple);
+    color: white;
+}
+.btn-info-icon {
+    background-color: rgba(255, 255, 255, 0.7);
+    color: var(--ua-blue);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border: none;
+    font-size: 1rem;
+    transition: background-color 0.2s ease-in-out;
+}
+.btn-info-icon:hover {
+    background-color: white;
+}
+
+/* Card Headers */
+.card-header.bg-primary {
+    background-color: var(--ua-blue) !important;
+}
+.card-header.bg-secondary {
+    background-color: var(--fti-purple) !important;
+}
+.card-header.bg-dark {
+    background-color: var(--ua-blue) !important;
+}
+
+/* Modal Header */
+.modal-header.bg-primary {
+    background-color: var(--ua-blue) !important;
+}
+
+/* Alerts & Badges */
+.badge.bg-secondary {
+    background-color: var(--fti-pastel) !important;
+    color: var(--ua-blue) !important;
+}
+.badge.bg-success {
+    background-color: var(--ua-blue) !important;
+}
+.badge.bg-danger {
+    background-color: var(--ua-red) !important;
+}
+.badge.bg-primary {
+    background-color: var(--fti-purple) !important;
+}
+
+/* Viewer Containers */
+.image-viewer-container {
+    background-color: #f8f9fa;
+    border: 2px solid var(--fti-pastel);
+}
+
+/* Info Modal Content Styling */
+.info-content h5 {
+    color: var(--ua-blue);
+}
+
+.info-content strong {
+    color: var(--fti-purple);
+}
+
+.info-content hr {
+    border-top: 1px solid var(--fti-pastel);
+}
+
+/* Fix for dropdowns appearing behind other elements */
+.settings-panel {
+    position: relative; /* Establishes a stacking context */
+    z-index: 10;      /* Ensures this column is on top */
+}
+
+/* Style for the calibration counter in the footer */
+.calibration-counter {
+    color: #6c757d; /* Muted gray color */
+    font-weight: normal;
+}

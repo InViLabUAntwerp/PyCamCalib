@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InViLab Camera Calibration - Start</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        .hover-card { transition: transform 0.2s ease, box-shadow 0.2s ease; cursor: pointer; text-decoration: none; color: inherit;}
+        .hover-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important; }
+        .ua-blue { color: #002e65; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="text-center mb-5">
+        <img src="{{ url_for('static', filename='Logo_InViLab_2023_Slogan_horizontal_color.svg') }}" alt="InViLab Logo" style="height: 80px;" class="mb-4">
+        <h1 class="fw-bold ua-blue">Camera Calibration Pipeline</h1>
+        <p class="text-muted fs-5">Select your compute engine to begin</p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+        <!-- LOCAL WASM MODE -->
+        <div class="col-md-5">
+            <a href="/app/local" class="card shadow-sm border-0 h-100 hover-card">
+                <div class="card-body p-5 text-center">
+                    <i class="bi bi-cpu fs-1 text-success mb-3"></i>
+                    <h3 class="fw-bold">Local Edge Compute</h3>
+                    <span class="badge bg-success mb-3">WebAssembly</span>
+                    <p class="text-muted">Runs Python directly inside your browser memory using Pyodide. No data leaves your machine.</p>
+                    <ul class="text-start text-muted mt-4">
+                        <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Unlimited</strong> file size</li>
+                        <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Unlimited</strong> concurrent users</li>
+                        <li><i class="bi bi-check-circle-fill text-success me-2"></i>100% Private (No uploads)</li>
+                        <li><i class="bi bi-info-circle-fill text-info me-2"></i>Initial load takes ~30 seconds</li>
+                    </ul>
+                </div>
+            </a>
+        </div>
+
+        <!-- SERVER MODE -->
+        <div class="col-md-5">
+            <a href="/app/server" class="card shadow-sm border-0 h-100 hover-card">
+                <div class="card-body p-5 text-center">
+                    <i class="bi bi-cloud-arrow-up fs-1 text-primary mb-3"></i>
+                    <h3 class="fw-bold">Cloud Server Compute</h3>
+                    <span class="badge bg-primary mb-3">Flask Backend</span>
+                    <p class="text-muted">Uploads your images to our dedicated server for processing. Best for weaker devices.</p>
+                    <ul class="text-start text-muted mt-4">
+                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>8</strong> concurrent users</li>
+                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>{{ max_upload_mb }}MB</strong> total upload size</li>
+                        <li><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Max <strong>1GB</strong> image RAM limit</li>
+                        <li><i class="bi bi-lightning-charge-fill text-warning me-2"></i>Instant load time</li>
+                    </ul>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<footer class="container text-center mt-5 pt-4">
+    <p class="small fw-bold" style="color: var(--ua-blue);">
+        <span class="calibration-counter">Total calibrations performed: {{ calibration_count }}</span><br>
+        &copy; 2026 Seppe Sels InViLab. All rights reserved.
+    </p>
+</footer>
+
+</body>
+</html>
