@@ -18,6 +18,9 @@
                 <option value="None" selected>Auto-Detect Board</option>
                 <option value="wenglor">Wenglor Board</option>
             </select>
+            {% if compute_mode == 'local' %}
+            <div class="form-text text-muted small">Note: ChArUco detection in local WASM mode can be very slow.</div>
+            {% endif %}
         </div>
         <div class="mb-3">
             <label class="form-label text-dark fw-bold" id="checkerSizeLabel">Square Size (mm)</label>

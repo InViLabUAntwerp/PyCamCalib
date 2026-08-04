@@ -143,7 +143,6 @@ if '.' not in sys.path: sys.path.append('.')
 
             eb.innerText = "Booting Logic Engine...";
 
-            // Restored clean python string without dangerous minification and WITH the 907 MB RAM spike fix
             await window.pyodide.runPythonAsync(`
 import os
 import sys
@@ -255,9 +254,43 @@ class MultiprocessingMockFinder(importlib.abc.MetaPathFinder, importlib.abc.Load
 sys.meta_path.insert(0, MultiprocessingMockFinder())
 
 import concurrent.futures
+
+class DummyFuture:
+    def __init__(self, fn, *args, **kwargs):
+        try:
+            self._res = fn(*args, **kwargs)
+            self._exc = None
+        except Exception as e:
+            self._exc = e
+    def result(self, timeout=None):
+        if self._exc:
+            raise self._exc
+        return self._res
+    def done(self):
+        return True
+
+class DummyExecutor:
+    def __init__(self, *args, **kwargs):
+        pass
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        pass
+    def map(self, fn, *iterables, timeout=None, chunksize=1):
+        return iter([fn(*args) for args in zip(*iterables)])
+    def submit(self, fn, *args, **kwargs):
+        return DummyFuture(fn, *args, **kwargs)
+
 cf_process_mock = ModuleType('concurrent.futures.process')
-cf_process_mock.ProcessPoolExecutor = concurrent.futures.ThreadPoolExecutor
+cf_process_mock.ProcessPoolExecutor = DummyExecutor
 sys.modules['concurrent.futures.process'] = cf_process_mock
+
+cf_thread_mock = ModuleType('concurrent.futures.thread')
+cf_thread_mock.ThreadPoolExecutor = DummyExecutor
+sys.modules['concurrent.futures.thread'] = cf_thread_mock
+
+concurrent.futures.ProcessPoolExecutor = DummyExecutor
+concurrent.futures.ThreadPoolExecutor = DummyExecutor
 
 sys.modules['PyCBD.checkerboard_enhancement.checkerboard_enhancer'] = UniversalMockModule('PyCBD.checkerboard_enhancement.checkerboard_enhancer')
 sys.modules['PyCBD.checkerboard_enhancement'] = UniversalMockModule('PyCBD.checkerboard_enhancement')
