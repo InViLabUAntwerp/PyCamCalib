@@ -1,0 +1,13 @@
+<h5 class="fw-bold">RMS Reprojection Error</h5>
+<p>This plot is the primary tool for judging the quality of your calibration.</p>
+<hr>
+
+<p><strong>What is Reprojection Error?</strong></p>
+<p>For each image, the algorithm uses the calculated camera parameters to "reproject" the 3D board corners back into a 2D image. The reprojection error is the distance (in pixels) between the original detected corner and its reprojected position. A smaller distance means a better calibration.</p>
+
+<p><strong>How to Read the Plot:</strong></p>
+<ul>
+    <li>Each <strong>bar</strong> represents the average reprojection error for a single image. Taller bars indicate images that contribute more error to the overall calibration.</li>
+    <li>The <strong>dashed line</strong> shows the overall Root Mean Square (RMS) error across all images. A good calibration typically has an RMS error below 0.5 pixels, and an excellent one is below 0.2 pixels.</li>
+    <li><strong>Removing Outliers:</strong> Click on a bar to mark it for removal. It will turn red. Then, click the "Remove Outliers & Recalculate" button. This will perform a new calibration without the selected images, which can often significantly improve the final RMS error.</li>
+</ul>

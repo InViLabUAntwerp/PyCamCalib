@@ -1,0 +1,39 @@
+<h5 class="fw-bold">Calibration Settings</h5>
+<p>This section configures how the calibration pattern is detected in your images.</p>
+<hr>
+
+<p><strong>Detector Type:</strong></p>
+<ul>
+    <li><strong>Checkerboard:</strong> The standard and most common calibration pattern. It is reliable but can be sensitive to lighting and perspective.</li>
+    <li><strong>ChArUco:</strong> A more advanced pattern that combines a checkerboard with ArUco markers. It is more robust to occlusions (parts of the board being hidden) and provides highly accurate corner detection.</li>
+</ul>
+
+<p><strong>ChArUco Preset:</strong></p>
+<ul>
+    <li><strong>Auto-Detect Board:</strong> If you are using a custom ChArUco board, the algorithm will attempt to automatically determine its dimensions from the images. This is flexible but may fail if the board is not clearly visible in the first few images.</li>
+    <li><strong>Wenglor Board:</strong> Select this if you are using the specific Wenglor ChArUco board. This uses pre-configured parameters for faster and more reliable detection.</li>
+</ul>
+<div class="card my-3">
+    <div class="card-body">
+        <h6 class="card-title fw-bold">Wenglor Board Example</h6>
+        <p class="card-text small">Below is an example of the charucoboard with Wenglor preset. You can download the vector file (SVG) to print it yourself.</p>
+        <div class="text-center my-2">
+            <img src="/static/standard_charuco_board.svg" alt="Wenglor ChArUco Board" style="width: 80%; border: 1px solid #ddd; padding: 5px;">
+        </div>
+        <a href="/static/standard_charuco_board.svg" class="btn btn-sm btn-outline-primary" download="wenglor_charuco_board.svg">Download Board SVG</a>
+        <hr>
+        <p class="card-text small mt-2">You can also generate this file yourself using the <code>generate_charuco.py</code> script located in the <code>examples/camera_images_charuco/</code> folder of the toolbox.</p>
+    </div>
+</div>
+
+<p><strong>Square Size (mm):</strong></p>
+<p>This is the most critical parameter for a metrically accurate calibration. Measure the side length of a single square on your physical calibration board as precisely as possible and enter the value in millimeters.</p>
+
+<p><strong>Board Corners (Cols &times; Rows):</strong></p>
+<p>Specify the number of <strong>inner corners</strong> on your checkerboard (e.g., a standard 9x6 board has 8 columns and 5 rows of inner corners). If left as "Auto", the system will try to detect the size automatically, which is convenient but may be less reliable than specifying it manually.</p>
+
+<p><strong>Require all corners (Absolute):</strong></p>
+<p>If checked, only images where <strong>all</strong> specified inner corners are detected will be used for calibration. This enforces a very high-quality dataset but may discard images where the board is partially out of frame.</p>
+
+<p><strong>Pixel Size (&mu;m):</strong></p>
+<p>This optional parameter is the physical size of a single pixel on your camera's sensor (e.g., 3.45 &mu;m). You can find this value in your camera's datasheet. If provided, the tool can calculate and display the focal length in millimeters (mm), which is often more intuitive than pixels.</p>

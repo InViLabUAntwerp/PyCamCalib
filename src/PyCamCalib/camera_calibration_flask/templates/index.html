@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
-
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -88,7 +87,11 @@
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center fw-bold">
                     <span>Parameters</span>
-                    <div><button class="btn btn-info-icon me-2" onclick="showInfoModal('info_parameters.html')"><i class="bi bi-info-lg"></i></button><button class="btn btn-sm btn-light text-dark fw-bold" id="btnExport" onclick="exportJSON()" disabled>Export JSON</button></div>
+                    <div>
+                        <button class="btn btn-info-icon me-2" onclick="showInfoModal('info_parameters.html')"><i class="bi bi-info-lg"></i></button>
+                        <button class="btn btn-sm btn-light text-dark fw-bold me-1" id="btnExport" onclick="exportJSON()" disabled>Export JSON</button>
+                        <button class="btn btn-sm btn-light text-dark fw-bold" id="btnExportLensfun" onclick="exportLensfunXML()" disabled>Export Lensfun XML</button>
+                    </div>
                 </div>
                 <div class="card-body p-0 table-responsive border">
                     <table class="table table-striped table-hover mb-0" id="resultsTable">
@@ -108,7 +111,6 @@
         </div>
 
         <div class="col-md-8">
-
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
                     <span class="ps-2 fw-bold">RMS Reprojection Error</span>
@@ -124,7 +126,8 @@
                 <div class="card-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
                     <span class="ps-2 fw-bold">Distortion Map</span>
                     <div>
-                        <button class="btn btn-info-icon me-2" onclick="showInfoModal('info_distortion.html')"><i class="bi bi-info-lg"></i></button><button class="btn btn-sm btn-light fw-bold text-dark" id="btnExportDistortion" onclick="exportDistortion()" disabled>Export Image</button>
+                        <button class="btn btn-info-icon me-2" onclick="showInfoModal('info_distortion.html')"><i class="bi bi-info-lg"></i></button>
+                        <button class="btn btn-sm btn-light fw-bold text-dark" id="btnExportDistortion" onclick="exportDistortion()" disabled>Export Image</button>
                     </div>
                 </div>
                 <div class="card-body border">
@@ -135,7 +138,6 @@
                             <button class="btn btn-sm btn-outline-danger" onclick="distZoom.reset()">Reset</button>
                         </div>
                     </div>
-
                     <div class="text-center rounded mb-3 overflow-hidden image-viewer-container" id="distContainer" style="position: relative; height: 500px; display: flex; align-items: center; justify-content: center; cursor: grab;">
                         <img id="distImg" src="" class="d-none" alt="Distortion Plot" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.1s ease-out; transform-origin: center center;">
                     </div>
@@ -148,26 +150,21 @@
                     <button class="btn btn-info-icon" onclick="showInfoModal('info_detections.html')"><i class="bi bi-info-lg"></i></button>
                 </div>
                 <div class="card-body border">
-
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="fw-bold text-truncate me-2" style="color: #002e65; max-width: 35%;" id="viewerName">Index: N/A | Image: N/A</span>
-
                         <div class="btn-group" role="group">
                             <button class="btn btn-sm btn-outline-secondary" onclick="detZoom.zoom(0.2)">Zoom In (+)</button>
                             <button class="btn btn-sm btn-outline-secondary" onclick="detZoom.zoom(-0.2)">Zoom Out (-)</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="detZoom.reset()">Reset</button>
                         </div>
-
                         <div class="ms-2">
                             <span class="badge bg-info text-dark fs-6 border border-info" id="viewerShape">Shape: N/A</span>
                             <span class="badge bg-primary fs-6" id="viewerError">Error: N/A</span>
                         </div>
                     </div>
-
                     <div class="text-center rounded mb-3 overflow-hidden image-viewer-container" id="imageContainer" style="position: relative; height: 500px; display: flex; align-items: center; justify-content: center; cursor: grab;">
                         <img id="detectionImg" src="" class="d-none" alt="Detection View" style="max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.1s ease-out; transform-origin: center center;">
                     </div>
-
                     <div class="d-flex align-items-center gap-2">
                         <span id="lblMinIdx" class="fw-bold text-muted">0</span>
                         <input type="range" class="form-range flex-grow-1" id="imageSlider" min="0" max="0" value="0" disabled onchange="fetchDetectionImage(this.value)">
@@ -186,7 +183,6 @@
                     <div id="extrinsicsPlot" style="width:100%; height:400px;"></div>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
@@ -213,19 +209,13 @@
         <h5 class="modal-title fw-bold" id="infoModalTitle">Information</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body info-content" id="infoModalContent" style="max-height: 70vh; overflow-y: auto;">
-        <!-- Content will be loaded here -->
-      </div>
+      <div class="modal-body info-content" id="infoModalContent" style="max-height: 70vh; overflow-y: auto;"></div>
     </div>
   </div>
 </div>
 
 <script>
-    // --- Generate Unique Tab ID for this specific Page Load ---
-    // --- Generate or Retrieve Unique Tab ID ---
-    // sessionStorage survives page refreshes, but is completely isolated per tab!
     let TAB_ID = sessionStorage.getItem('invilab_tab_id');
-
     if (!TAB_ID) {
         TAB_ID = (typeof crypto !== 'undefined' && crypto.randomUUID)
             ? crypto.randomUUID()
@@ -233,13 +223,10 @@
         sessionStorage.setItem('invilab_tab_id', TAB_ID);
     }
 
-    // --- Instantly Free Up Server Slot on Tab Close ---
-    // We use pagehide/visibilitychange to catch tab closures and page unloads
     window.addEventListener('pagehide', function (event) {
         navigator.sendBeacon(`/api/disconnect?tid=${TAB_ID}`);
     });
 
-    // --- UAntwerpen Colors for JS ---
     const uaBlue = '#002e65';
     const uaRed = '#ea2c38';
     const ftiPurple = '#b10097';
@@ -249,10 +236,8 @@
     let currentColors = [];
     let lastCalibrationData = null;
     let totalLoadedImages = 0;
+    let lastClickTime = 0;
 
-    let lastClickTime = 0; // Prevent mobile ghost clicks
-
-    // --- Pan/Zoom Controller Class ---
     class ZoomPanController {
         constructor(containerId, imageId) {
             this.container = document.getElementById(containerId);
@@ -292,9 +277,9 @@
         if (detectorType === 'charuco') {
             charucoOptions.classList.remove('d-none');
             boardSizeGroup.classList.add('d-none');
-            absoluteCheckGroup.classList.add('d-none'); // Absolute is not used for ChArUco
+            absoluteCheckGroup.classList.add('d-none');
             checkerSizeLabel.innerText = "Square Size (mm)";
-        } else { // checkerboard
+        } else {
             charucoOptions.classList.add('d-none');
             boardSizeGroup.classList.remove('d-none');
             absoluteCheckGroup.classList.remove('d-none');
@@ -302,7 +287,6 @@
         }
     }
 
-    // --- UI Helpers ---
     function setStatus(text, colorClass) {
         const badge = document.getElementById('statusBadge');
         badge.className = `badge ${colorClass} p-2 fs-6`;
@@ -323,14 +307,12 @@
         excludedIndices = [];
         pendingRemoval = [];
 
-        // Set default values for the example data in the UI
         document.getElementById('checkerSize').value = 14.0;
         document.getElementById('pixelSize').value = 3.45;
         document.getElementById('infoInput').value = "acA1440-220uc Example";
         document.getElementById('detectorType').value = 'checkerboard';
-        toggleDetectorOptions(); // Ensure UI reflects checkerboard selection
+        toggleDetectorOptions();
 
-        // Gather current settings from the UI to send to the backend
         const settings = {
             checker_size: document.getElementById('checkerSize').value,
             absolute: document.getElementById('absoluteCheck').checked,
@@ -350,33 +332,25 @@
             if (!res.ok) throw new Error(data.error || "Server error");
 
             handleCalibrationSuccess(data);
-            document.getElementById('btnRecalculate').disabled = false;
-            document.getElementById('btnReset').disabled = false;
-            document.getElementById('btnExport').disabled = false;
-            document.getElementById('btnExportDistortion').disabled = false;
         } catch (error) {
             showAlert('errorAlert', error.message); setStatus("Error", "bg-danger");
         }
     }
 
-    // --- API Interactions ---
     async function initialCalibration() {
         const fileInput = document.getElementById('imageFiles');
         if (fileInput.files.length === 0) return showAlert('errorAlert', "Please select images first.");
 
-        // --- INSTANT FRONTEND FILE SIZE CHECK ---
         let totalSizeBytes = 0;
         for (let i = 0; i < fileInput.files.length; i++) {
             totalSizeBytes += fileInput.files[i].size;
         }
 
-        const maxUploadMB = 50; // Safely hardcoded in JS
-
+        const maxUploadMB = 50;
         if (totalSizeBytes > (maxUploadMB * 1024 * 1024)) {
             const currentMB = (totalSizeBytes / (1024 * 1024)).toFixed(1);
             return showAlert('errorAlert', `Upload blocked: Total file size (${currentMB} MB) exceeds the ${maxUploadMB} MB limit.`);
         }
-        // ----------------------------------------
 
         setStatus("Uploading & Calibrating...", "bg-warning text-dark");
         showAlert('errorAlert', null);
@@ -393,13 +367,9 @@
         formData.append('absolute', document.getElementById('detectorType').value === 'checkerboard' && document.getElementById('absoluteCheck').checked);
 
         const pixelSizeInput = document.getElementById('pixelSize').value;
-        if (pixelSizeInput) {
-            formData.append('pixel_size', pixelSizeInput);
-        }
+        if (pixelSizeInput) formData.append('pixel_size', pixelSizeInput);
         const infoInput = document.getElementById('infoInput').value;
-        if (infoInput) {
-            formData.append('info', infoInput);
-        }
+        if (infoInput) formData.append('info', infoInput);
         const bw = document.getElementById('boardWidth').value;
         const bh = document.getElementById('boardHeight').value;
         if (bw && bh) {
@@ -415,30 +385,22 @@
             });
             const data = await res.json();
 
-            // --- HANDLE SPECIFIC BACKEND ERRORS ---
             if (!res.ok) {
                 if (res.status === 503) {
-                    // 503 Server Busy / Memory Full -> Show as a warning
                     setStatus("Waiting for slot...", "bg-warning text-dark");
                     showAlert('warningAlert', `⏳ ${data.details}`);
-                    return; // Stop execution, let them wait
+                    return;
                 } else {
-                    // Throw a standard error (400, 413, 500)
                     throw new Error(data.details || data.error || "Server error");
                 }
             }
 
             handleCalibrationSuccess(data);
-            document.getElementById('btnRecalculate').disabled = false;
-            document.getElementById('btnReset').disabled = false;
-            document.getElementById('btnExport').disabled = false;
-            document.getElementById('btnExportDistortion').disabled = false;
         } catch (error) {
             showAlert('errorAlert', error.message);
             setStatus("Error", "bg-danger");
         }
     }
-
 
     function removeOutliersAndRecalculate() {
         if (pendingRemoval.length === 0) return alert("Select an outlier on the graph first.");
@@ -452,14 +414,12 @@
         submitRecalibrationRequest();
     }
 
-    // --- Server Status Polling ---
     function checkServerStatus() {
         fetch('/api/status', { headers: { 'X-Tab-ID': TAB_ID } })
             .then(res => res.json())
             .then(data => {
                 const badge = document.getElementById('userCountBadge');
                 badge.innerText = `Users: ${data.count}/${data.max}`;
-
                 const btnCalibrate = document.getElementById('btnCalibrate');
 
                 if (data.waitlisted) {
@@ -467,13 +427,10 @@
                     badge.className = 'badge bg-danger p-2 fs-6 me-2 shadow-sm';
                     showAlert('warningAlert', 'The server is currently at maximum capacity (8 users). Please wait, a slot will open up automatically.');
                 } else {
-                    // Only re-enable if it isn't currently uploading
                     if (document.getElementById('statusBadge').innerText === "Status: Ready") {
                         btnCalibrate.disabled = false;
                     }
                     badge.className = 'badge bg-info text-dark p-2 fs-6 me-2 shadow-sm';
-
-                    // Clear the warning if they just got a slot
                     const warningEl = document.getElementById('warningAlert');
                     if (!warningEl.classList.contains('d-none') && warningEl.innerText.includes('maximum capacity')) {
                         showAlert('warningAlert', null);
@@ -483,7 +440,6 @@
             .catch(err => console.error("Could not fetch status:", err));
     }
 
-    // Check immediately on load, and then every 10 seconds
     checkServerStatus();
     setInterval(checkServerStatus, 10000);
 
@@ -511,7 +467,6 @@
         }
     }
 
-    // --- Visualization Updates ---
     function handleCalibrationSuccess(data) {
         setStatus("Ready", "bg-success");
         if (data.warning) showAlert('warningAlert', data.warning);
@@ -530,6 +485,13 @@
         }
 
         initDetectionViewer();
+
+        // Unlock all exports and options
+        document.getElementById('btnRecalculate').disabled = false;
+        document.getElementById('btnReset').disabled = false;
+        document.getElementById('btnExport').disabled = false;
+        document.getElementById('btnExportLensfun').disabled = false;
+        document.getElementById('btnExportDistortion').disabled = false;
     }
 
     function updateTable(intrinsics, distortion) {
@@ -575,7 +537,6 @@
 
     function renderRMSPlot(plotData) {
         pendingRemoval = [];
-        // Default color is UAntwerpen Blue
         currentColors = plotData.indices.map(() => uaBlue);
 
         const trace = {
@@ -587,9 +548,8 @@
             margin: { t: 30, b: 40, l: 50, r: 10 },
             xaxis: { title: 'Image Index', type: 'category', fixedrange: true },
             yaxis: { title: 'Reprojection Error (RMS) (pixels)', fixedrange: true },
-            dragmode: false, // Disables zooming/panning on this plot so single taps work on mobile
+            dragmode: false,
             shapes: [{
-                // RMS Line uses FTI Purple
                 type: 'line', x0: -0.5, x1: plotData.indices.length - 0.5,
                 y0: plotData.rms, y1: plotData.rms,
                 line: { color: ftiPurple, width: 2, dash: 'dash' }
@@ -601,13 +561,10 @@
         Plotly.newPlot('reprojPlot', [trace], layout);
 
         document.getElementById('reprojPlot').on('plotly_click', function(data) {
-            // --- Prevent Mobile Ghost Clicks ---
             const now = Date.now();
             if (now - lastClickTime < 400) return;
             lastClickTime = now;
-            // -----------------------------------
 
-            const pointIndex = data.points[0].pointIndex;
             const imageIndex = parseInt(data.points[0].x);
             const pendingIndex = pendingRemoval.indexOf(imageIndex);
 
@@ -627,7 +584,6 @@
         }
 
         const data = [];
-
         data.push({
             x: [0], y: [0], z: [0],
             mode: 'markers+text',
@@ -673,13 +629,11 @@
         Plotly.newPlot('extrinsicsPlot', data, layout);
 
         document.getElementById('extrinsicsPlot').on('plotly_click', function(data) {
-            // --- Prevent Mobile Ghost Clicks ---
             const now = Date.now();
             if (now - lastClickTime < 400) return;
             lastClickTime = now;
-            // -----------------------------------
 
-            if (data.points[0].curveNumber === 0) return; // Ignore camera click
+            if (data.points[0].curveNumber === 0) return;
 
             const traceName = data.points[0].data.name;
             const match = traceName.match(/Image (\d+)/);
@@ -696,7 +650,6 @@
         });
     }
 
-    // --- Image Viewer ---
     function initDetectionViewer() {
         const slider = document.getElementById('imageSlider');
         slider.max = totalLoadedImages - 1;
@@ -722,7 +675,6 @@
         } catch (error) { console.error("Failed to fetch image:", error); }
     }
 
-    // --- Exports ---
     function exportJSON() {
         if (!lastCalibrationData) return;
         const exportObj = {
@@ -732,24 +684,10 @@
             c_std: [lastCalibrationData.intrinsics.cx[1], lastCalibrationData.intrinsics.cy[1]],
             s: lastCalibrationData.intrinsics.s[0],
             s_std: lastCalibrationData.intrinsics.s[1],
-            radial_dist_coeffs: [
-                lastCalibrationData.distortion.k1[0],
-                lastCalibrationData.distortion.k2[0],
-                lastCalibrationData.distortion.k3[0]
-            ],
-            radial_dist_coeffs_std: [
-                lastCalibrationData.distortion.k1[1],
-                lastCalibrationData.distortion.k2[1],
-                lastCalibrationData.distortion.k3[1]
-            ],
-            tangential_dist_coeffs: [
-                lastCalibrationData.distortion.p1[0],
-                lastCalibrationData.distortion.p2[0]
-            ],
-            tangential_dist_coeffs_std: [
-                lastCalibrationData.distortion.p1[1],
-                lastCalibrationData.distortion.p2[1]
-            ],
+            radial_dist_coeffs: [lastCalibrationData.distortion.k1[0], lastCalibrationData.distortion.k2[0], lastCalibrationData.distortion.k3[0]],
+            radial_dist_coeffs_std: [lastCalibrationData.distortion.k1[1], lastCalibrationData.distortion.k2[1], lastCalibrationData.distortion.k3[1]],
+            tangential_dist_coeffs: [lastCalibrationData.distortion.p1[0], lastCalibrationData.distortion.p2[0]],
+            tangential_dist_coeffs_std: [lastCalibrationData.distortion.p1[1], lastCalibrationData.distortion.p2[1]],
             rms_reproj_error: lastCalibrationData.plot_data.rms,
             sensor_dimensions: lastCalibrationData.sensor_dimensions,
             pixel_size: lastCalibrationData.pixel_size || null,
@@ -767,6 +705,71 @@
         document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
     }
 
+    function exportLensfunXML() {
+        if (!lastCalibrationData) return;
+
+        const info = lastCalibrationData.info || "Custom Camera";
+        const width = lastCalibrationData.sensor_dimensions[0];
+        const height = lastCalibrationData.sensor_dimensions[1];
+
+        let focalMm = 50.0;
+        if (lastCalibrationData.intrinsics.focal_length_mm) {
+            focalMm = (lastCalibrationData.intrinsics.focal_length_mm[0] + lastCalibrationData.intrinsics.focal_length_mm[1]) / 2.0;
+        } else if (lastCalibrationData.pixel_size) {
+            const fx = lastCalibrationData.intrinsics.fx[0];
+            focalMm = fx * lastCalibrationData.pixel_size;
+        }
+
+        const k1 = lastCalibrationData.distortion.k1[0];
+        const k2 = lastCalibrationData.distortion.k2[0];
+        const k3 = lastCalibrationData.distortion.k3[0];
+
+        const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<lensdatabase version="1">
+    <camera>
+        <maker>InViLab</maker>
+        <model>${escapeXML(info)}</model>
+        <sensor width="${width}" height="${height}" cropfactor="1.0"/>
+    </camera>
+    <lens>
+        <maker>InViLab</maker>
+        <model>${escapeXML(info)} Lens Profile</model>
+        <calibration model="poly7" focal="${focalMm.toFixed(2)}" crop="1.0">
+            <distortion k1="${k1}" k2="${k2}" k3="${k3}"/>
+        </calibration>
+    </lens>
+</lensdatabase>`;
+
+        const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+
+        let filename = "lensfun_profile.xml";
+        if (lastCalibrationData.info) {
+            const safeInfo = lastCalibrationData.info.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            filename = `lensfun_profile_${safeInfo}.xml`;
+        }
+
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+    }
+
+    function escapeXML(str) {
+        return str.replace(/[<>&'"]/g, function (c) {
+            switch (c) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case '\'': return '&apos;';
+                case '"': return '&quot;';
+            }
+        });
+    }
+
     function exportDistortion() {
         const img = document.getElementById('distImg');
         if (!img.src || img.src === "") return;
@@ -776,9 +779,7 @@
         document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
     }
 
-    // --- Code Snippet Generator ---
     let codeModal;
-
     function displayModal(title, code) {
         document.getElementById('codeModalTitle').innerText = title;
         document.getElementById('codeSnippetContent').innerText = code;
@@ -796,179 +797,88 @@
     }
 
     function showCameraParametersScript() {
-        const script = `# ========================================================
-# HOW TO RUN:
-# 1. Ensure your pycamcalib environment is active.
-# 2. Ensure 'calibration_parameters.json' is in the same folder.
-# ========================================================
-
-from PyCamCalib.core.CameraParameters import CameraParameters
-
-from PyCamCalib.core.CameraParameters import CameraParameters
+        const script = `from PyCamCalib.core.CameraParameters import CameraParameters
 import cv2
 import matplotlib.pyplot as plt
 
 def main():
-    # 1. Initialize the camera parameters object
     cam_params = CameraParameters()
-
-    # 2. Load parameters from the downloaded JSON file
     cam_params.load_parameters_from_json('calibration_parameters.json')
-
-    # 3. Print out standard focal length in pixels
     print(f"Focal Length (pixels): fx={cam_params.f[0]:.2f}, fy={cam_params.f[1]:.2f}")
-
-    # 4. Supply the sensor's actual pixel size in mm (e.g., 3.45 um = 0.00345 mm)
-    # Note: If you provided this in the web interface, it might already be in the JSON.
     if cam_params.pixel_size is None:
         cam_params.pixel_size = 3.45 / 1000.0
-
-    # 5. Extract calculated Focal Length in millimeters
     print(f"Focal Length (mm): fx={cam_params.focal_length_mm[0]:.2f}, fy={cam_params.focal_length_mm[1]:.2f}")
-
-    # 6. Extract the calculated Field of View (FOV) angle in degrees
     print(f"Field of View (degrees): X={cam_params.PerspectiveAngle[0]:.2f}°, Y={cam_params.PerspectiveAngle[1]:.2f}°")
-
-    # 7. Generate and display the distortion plot map
     cam_params.plot_distortion()
 
-    # 8. Undistort an example image
-    image_path = 'myimage.png'  # <-- Replace with your actual image path
+    image_path = 'myimage.png'
     img = cv2.imread(image_path)
-
     if img is not None:
-        print(f"\\nUndistorting '{image_path}'...")
-        # You can adjust alpha (0 to 1) and crop (True/False) based on your needs
         undistorted_img = cam_params.undistort_image(img, alpha=1, crop=False)
         plt.imshow(undistorted_img)
         plt.show()
 
-    else:
-        print(f"\\nWarning: Could not load '{image_path}'. Make sure the file exists to test undistortion.")
-
 if __name__ == "__main__":
     main()`;
-
         displayModal("Python: Use CameraParameters Class", script);
     }
 
     function showBatchCalibrationScript() {
-        const script = `# ========================================================
-# HOW TO RUN:
-# 1. Ensure your InViLab 'PyCamCalib' package is accessible in your Python path.
-# 2. Install requirements:
-#    pip install opencv-python numpy
-# ========================================================
-
-import cv2
+        const script = `import cv2
 import numpy as np
 from PyCamCalib.core.calibration import CameraCalibrator
 
 def main():
-    # --- Configuration ---
-    # Define your images here. Add valid paths.
     image_paths = ['image1.jpg', 'image2.jpg', 'image3.jpg']
-    checker_size = 1.0       # mm
+    checker_size = 1.0
     absolute_positions = False
 
-    print("Loading images...")
-    images = []
-    for path in image_paths:
-        img = cv2.imread(path)
-        if img is not None:
-            images.append(img)
-        else:
-            print(f"Warning: Could not load '{path}'")
-
+    images = [cv2.imread(p) for p in image_paths if cv2.imread(p) is not None]
     if not images:
-        print("No valid images found. Exiting.")
         return
 
-    # --- Prepare Data for PyCamCalib ---
-    # Create the 3D numpy array expected by construct_feature_list
     h, w, c = images[0].shape
-    n_images = len(images)
-    image_array = np.zeros((h, w, c, n_images), dtype=images[0].dtype)
-
+    image_array = np.zeros((h, w, c, len(images)), dtype=images[0].dtype)
     for i, img in enumerate(images):
         image_array[..., i] = img
 
-    print(f"Successfully loaded {n_images} images. Beginning calibration...")
-
-    # --- Execute Calibration ---
     calibrator = CameraCalibrator()
-
-    # 1. Find Checkerboard Corners
-    print("Finding corners in images...")
-    calibrator.construct_feature_list(
-        image_array,
-        checker_size,
-        board_size=None,
-        marker_location=None,
-        expand=False,
-        predict=False
-    )
-
-    # 2. Construct OpenCV Data Lists
+    calibrator.construct_feature_list(image_array, checker_size)
     calibrator.construct_points_lists([], absolute_positions)
+    params = calibrator.opencv_calibration(np.array([w, h]))
 
-    if not calibrator.image_points_list:
-        print("Error: Failed to detect features in all images. Calibration failed.")
-        return
-
-    # 3. Perform OpenCV Calibration
-    print("Calculating Matrix and Distortion Coefficients...")
-    sensor_dims = np.array([w, h])
-    params = calibrator.opencv_calibration(sensor_dims)
-
-    # --- Print Output ---
-    print("\\n=== Calibration Successful ===")
-    print(f"Focal Length (fx, fy): {float(params.f[0]):.4f}, {float(params.f[1]):.4f}")
-    print(f"Principal Point (cx, cy): {float(params.c[0]):.4f}, {float(params.c[1]):.4f}")
-
-    dist = params.get_distortion_coeffs_opencv().flatten()
-    print(f"Distortion [k1, k2, p1, p2, k3]: {dist}")
-    print(f"RMS Reprojection Error: {float(calibrator.rms_reproj_error):.4f}")
+    print(f"fx, fy: {params.f}")
+    print(f"RMS: {calibrator.rms_reproj_error}")
 
 if __name__ == "__main__":
     main()`;
-
         displayModal("Python: Headless Batch Calibration", script);
     }
 
-    // --- Info Modal ---
-    let infoModal;
     async function showInfoModal(infoFile) {
-        if (!infoModal) {
-            infoModal = new bootstrap.Modal(document.getElementById('infoModal'));
-        }
-
         const contentDiv = document.getElementById('infoModalContent');
         contentDiv.innerHTML = '<p class="text-center">Loading...</p>';
-        infoModal.show();
+        new bootstrap.Modal(document.getElementById('infoModal')).show();
 
         try {
             const response = await fetch(`/api/info/${infoFile}`);
-            const html = await response.text();
-            contentDiv.innerHTML = html;
+            if (!response.ok) throw new Error("Failed to load");
+            contentDiv.innerHTML = await response.text();
         } catch (error) {
             contentDiv.innerHTML = '<p class="text-center text-danger">Could not load information.</p>';
-            console.error("Failed to fetch info content:", error);
         }
     }
 </script>
+
 <footer class="container text-center mt-5 mb-4 border-top pt-4">
-        <p class="small text-muted mb-1">
-            <strong>Disclaimer:</strong> This software is provided "as is", without warranty of any kind, express or implied.
-            In no event shall the authors or copyright holders be liable for any claim, damages or other liability,
-            whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software
-            or the use or other dealings in the software.
-        </p>
-        <p class="small fw-bold" style="color: var(--ua-blue);">
-            <span class="calibration-counter">Total calibrations performed with this tool: {{ calibration_count }}</span><br>
-            &copy; 2026 Seppe Sels InViLab (<a href="https://invilab.be" target="_blank" style="color: var(--ua-blue); text-decoration: none;">invilab.be</a>). All rights reserved.
-        </p>
-    </footer>
+    <p class="small text-muted mb-1">
+        <strong>Disclaimer:</strong> This software is provided "as is", without warranty of any kind, express or implied.
+    </p>
+    <p class="small fw-bold" style="color: var(--ua-blue);">
+        <span class="calibration-counter">Total calibrations performed with this tool: {{ calibration_count }}</span><br>
+        &copy; 2026 Seppe Sels InViLab (<a href="https://invilab.be" target="_blank" style="color: var(--ua-blue); text-decoration: none;">invilab.be</a>). All rights reserved.
+    </p>
+</footer>
 
 </body>
 </html>
