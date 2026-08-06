@@ -4,7 +4,17 @@
         <span class="ps-2 fw-bold">RMS Reprojection Error</span>
         <button class="btn btn-info-icon" onclick="showInfoModal('info_rms_plot.html')"><i class="bi bi-info-lg"></i></button>
     </div>
-    <div class="card-body border">
+    <!-- ADDED: position-relative so the overlay stays inside this container -->
+    <div class="card-body border position-relative">
+
+        <!-- ADDED: Loading Overlay (hidden by default via d-none) -->
+        <div id="loadingOverlay" class="d-none position-absolute top-0 start-0 w-100 h-100 flex-column justify-content-center align-items-center" style="background: rgba(255, 255, 255, 0.85); z-index: 100; backdrop-filter: blur(2px);">
+            <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Calculating...</span>
+            </div>
+            <h5 class="text-primary fw-bold m-0" id="loadingText">Calibrating...</h5>
+        </div>
+
         <p class="text-muted small mb-1">Click on a bar to mark it for removal (turns <span style="color: #ea2c38; font-weight: bold;">Red</span>), then click "Recalculate".</p>
         <div id="reprojPlot" style="width:100%; height:300px;"></div>
     </div>

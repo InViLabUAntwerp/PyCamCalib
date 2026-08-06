@@ -36,6 +36,32 @@ function showAlert(id, msg) {
     }
 }
 
+function setLoadingState(isCalculating, message = "Calibrating...") {
+    const overlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
+    const btnCalibrate = document.getElementById('btnCalibrate');
+    const btnRecalculate = document.getElementById('btnRecalculate');
+    const btnReset = document.getElementById('btnReset');
+
+    if (isCalculating) {
+        // Show overlay
+        loadingText.innerText = message;
+        overlay.classList.remove('d-none');
+        overlay.classList.add('d-flex');
+
+        // Disable buttons to prevent double-clicking
+        if(btnCalibrate) btnCalibrate.disabled = true;
+        if(btnRecalculate) btnRecalculate.disabled = true;
+        if(btnReset) btnReset.disabled = true;
+    } else {
+        // Hide overlay
+        overlay.classList.remove('d-flex');
+        overlay.classList.add('d-none');
+
+        // Buttons are dynamically re-enabled in handleCalibrationSuccess based on state
+    }
+}
+
 // --- 2. BACKEND ADAPTER INTERFACES ---
 const ServerBackend = {
     init: async () => {
@@ -677,10 +703,18 @@ async function appLoadExampleData() {
     document.getElementById('detectorType').value = 'checkerboard';
     toggleDetectorOptions();
 
+    setLoadingState(true, "Loading Example Data & Calibrating...");
+    await new Promise(r => setTimeout(r, 50)); // Force browser to paint the UI
+
     try {
         const data = await Backend.loadExample(getSettingsObject());
         handleCalibrationSuccess(data);
-    } catch(e) { showAlert('errorAlert', e.message); setStatus("Error", "bg-danger"); }
+    } catch(e) {
+        showAlert('errorAlert', e.message);
+        setStatus("Error", "bg-danger");
+    } finally {
+        setLoadingState(false);
+    }
 }
 
 async function appInitialCalibration() {
@@ -696,29 +730,55 @@ async function appInitialCalibration() {
     showAlert('errorAlert', null); showAlert('warningAlert', null);
     excludedIndices = []; pendingRemoval = [];
 
+    setLoadingState(true, "Extracting corners and calibrating...");
+    await new Promise(r => setTimeout(r, 50)); // Force browser to paint the UI
+
     try {
         const data = await Backend.calibrateInitial(fi.files, getSettingsObject());
         handleCalibrationSuccess(data);
-    } catch(e) { showAlert('errorAlert', e.message); setStatus("Error", "bg-danger"); }
+    } catch(e) {
+        showAlert('errorAlert', e.message);
+        setStatus("Error", "bg-danger");
+    } finally {
+        setLoadingState(false);
+    }
 }
 
 async function appRecalculate() {
     if (pendingRemoval.length === 0) return alert("Select an outlier first.");
     setStatus("Recalculating...", "bg-warning text-dark");
     excludedIndices = excludedIndices.concat(pendingRemoval); pendingRemoval = [];
+
+    setLoadingState(true, "Recalibrating without outliers...");
+    await new Promise(r => setTimeout(r, 50)); // Force browser to paint the UI
+
     try {
         const data = await Backend.recalculate(excludedIndices, document.getElementById('infoInput').value);
         handleCalibrationSuccess(data);
-    } catch(e) { showAlert('errorAlert', e.message); setStatus("Error", "bg-danger"); }
+    } catch(e) {
+        showAlert('errorAlert', e.message);
+        setStatus("Error", "bg-danger");
+    } finally {
+        setLoadingState(false);
+    }
 }
 
 async function appResetOutliers() {
     setStatus("Resetting...", "bg-warning text-dark");
     excludedIndices = []; pendingRemoval = [];
+
+    setLoadingState(true, "Resetting and recalibrating...");
+    await new Promise(r => setTimeout(r, 50)); // Force browser to paint the UI
+
     try {
         const data = await Backend.recalculate(excludedIndices, document.getElementById('infoInput').value);
         handleCalibrationSuccess(data);
-    } catch(e) { showAlert('errorAlert', e.message); setStatus("Error", "bg-danger"); }
+    } catch(e) {
+        showAlert('errorAlert', e.message);
+        setStatus("Error", "bg-danger");
+    } finally {
+        setLoadingState(false);
+    }
 }
 
 async function appFetchDetectionImage(idx) {
@@ -732,7 +792,6 @@ async function appFetchDetectionImage(idx) {
         detZoom.reset();
     } catch(e) { console.error("Fetch failed", e); }
 }
-
 // --- 4. RENDERERS ---
 function handleCalibrationSuccess(data) {
     setStatus("Ready", "bg-success");
@@ -756,6 +815,7 @@ function handleCalibrationSuccess(data) {
     document.getElementById('btnRecalculate').disabled = false; document.getElementById('btnReset').disabled = false;
     document.getElementById('btnExport').disabled = false; document.getElementById('btnExportLensfun').disabled = false;
     document.getElementById('btnExportDistortion').disabled = false;
+    document.getElementById('btnCalibrate').disabled = false; // Re-enable main button too
 
     fetch('/api/increment-counter', {method: 'POST'})
         .then(r=>r.json()).then(d=>{ if(d.success) document.querySelector('.calibration-counter').innerText = `Total calibrations performed: ${d.count}`; })
