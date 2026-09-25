@@ -399,6 +399,7 @@ class CameraCalibrator:
         self.t_vecs: npt.NDArray[np.float64] = np.zeros((1, 3))
         self.extrinsics_std: npt.NDArray[np.float64] = np.zeros(1)
         self.camera_parameters: CameraParameters = CameraParameters()
+        self.calibration_flags: int = 0  # cv2.CALIB_* flags passed to calibrateCameraExtended
         self.FeatureDetector = None
         self.FeatureDetector_logging = False
 
@@ -521,9 +522,12 @@ class CameraCalibrator:
             cameraMatrix = None
         else:
             cameraMatrix = self.camera_parameters.get_intrinsics_matrix_opencv()
+            if not np.all(self.camera_parameters.f):
+                # default parameters have f = 0; CALIB_FIX_ASPECT_RATIO needs a valid fx/fy ratio
+                cameraMatrix = np.eye(3)
         rms_reproj_error, intrinsics_matrix, dist_coeffs, r_vecs, t_vecs, intrinsics_std, extrinsics_std, \
         per_view_err = cv2.calibrateCameraExtended(self.object_points_list, self.image_points_list, sensor_dimensions,
-                                                   cameraMatrix, None)
+                                                   cameraMatrix, None, flags=self.calibration_flags)
 
         self.rms_reproj_error = np.float64(rms_reproj_error)
         self.per_view_err = np.squeeze(per_view_err)
