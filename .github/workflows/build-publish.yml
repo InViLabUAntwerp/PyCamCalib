@@ -1,0 +1,99 @@
+name: Build & Publish
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request: {}
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tool
+        run: python -m pip install --upgrade build
+
+      # Pure-Python package: one py3-none-any wheel plus an sdist covers every platform.
+      - name: Build wheel and sdist
+        run: python -m build --outdir dist
+
+      - name: Check tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          [ "v$version" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} != pyproject version v$version"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  # Installs the built wheel with and without the gui extra, so a broken
+  # core/gui split fails the PR instead of failing for a user.
+  test-install:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Core install imports without Qt
+        shell: bash
+        run: |
+          pip install dist/*.whl
+          python -c "import PyCamCalib.core.calibration"
+          python -c "import importlib.util as u; assert u.find_spec('PySide6') is None, 'core pulled in PySide6'"
+
+      - name: GUI extra installs
+        shell: bash
+        run: |
+          pip install "$(ls dist/*.whl)[gui]"
+          QT_QPA_PLATFORM=offscreen python -c "import PyCamCalib.camera_calibration_gui.gui_application"
+
+  publish:
+    name: Publish to GitHub Release & PyPI
+    needs: [build, test-install]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/PyCamCalib
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+      - name: Publish to PyPI via trusted publisher
+        uses: pypa/gh-action-pypi-publish@release/v1

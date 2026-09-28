@@ -5,13 +5,28 @@
 The camera calibration toolbox contains tools for performing camera and stereo calibration, evaluating the calibration 
 results, and some basic uses for the parameters such as distortion correction and rectification. 
 
-## Requirements
+## Installation
 
-* Python >= 3.7 (3.10 recommended)
-* PyCBD
-* PyGeiger
-* (Optional) camera_toolbox_python (specifically the DataClass) if you want to be able to load SEP and HDF5 image data 
-  files with the GUI
+Requires Python >= 3.10.
+
+| Command | What you get |
+|---|---|
+| `pip install PyCamCalib` | The headless library (`PyCamCalib.core`): calibration, parameters, undistortion. No Qt, safe for servers and CI. |
+| `pip install "PyCamCalib[gui]"` | The library plus the desktop GUI (PySide6, pyqtgraph). |
+| `pip install "PyCamCalib[web]"` | The library plus the Flask dependencies (Flask, gunicorn) for the browser app in the repository. |
+| `pip install "PyCamCalib[gui,web]"` | Everything. |
+
+The extras can be combined. Only one OpenCV wheel can be installed at a time; the library depends on
+`opencv-contrib-python`. If you need `opencv-contrib-python-headless` (for example in a container), install it instead
+after uninstalling the former.
+
+To develop from a clone, use [uv](https://docs.astral.sh/uv/):
+
+```
+git clone https://github.com/InViLabUAntwerp/PyCamCalib
+cd PyCamCalib
+uv sync --extra gui --extra web
+```
 
 ## Usage
 
@@ -26,7 +41,7 @@ it is also important to have images of the checkerboard in each corner. The came
 For additional arguments, check the documentation.
 
 ```
-From PyCamCalib.core.calibration import CameraCalibrator
+from PyCamCalib.core.calibration import CameraCalibrator
 
 
 calibrator = CameraCalibrator()
@@ -146,10 +161,11 @@ parameters.load_parameters(your_file)
 
 ### GUI
 
-For your convenience, there is also a GUI for the camera calibration process. This can be launched by either running
-the `camera_calibration_gui.exe` file or by executing `camera_calibration_gui` in the terminal.
+For your convenience, there is also a GUI for the camera calibration process. It requires the `gui` extra
+(`pip install "PyCamCalib[gui]"`) and is launched by executing `camera_calibration_gui` in the terminal. Without the
+extra, the command prints an installation hint instead of starting.
 
-examples for all these use cases can be found in the
-[online repository](https://bitbucket.org/MichaelHillen/calibration_toolbox_python/src/distribution/).  Please refer to 
-the documentation for additional in-depth information.
+Examples for all these use cases can be found in the
+[online repository](https://github.com/InViLabUAntwerp/PyCamCalib). Please refer to the documentation for additional
+in-depth information.
 

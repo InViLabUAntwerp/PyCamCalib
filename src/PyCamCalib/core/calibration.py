@@ -13,10 +13,7 @@ import matplotlib.pyplot as plt
 from typing import Tuple, Optional
 from .exceptions import CalibrationError
 from .feature_detection import FeatureDetector
-try:
-    from CTPv.Transformation.TransformationMatrix import TransformationMatrix
-except:
-    from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
+from CTPv.Transformation.TransformationMatrix import TransformationMatrix
 from .CameraParameters import CameraParameters
 
 from multiprocessing import shared_memory

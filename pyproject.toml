@@ -1,9 +1,12 @@
 [build-system]
-requires = ["setuptools>=74.1"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["PyCamCalib*"]
+# The Flask apps ship their own Pyodide copy of core/ under static/; keep them out of the wheel.
+exclude = ["PyCamCalib.camera_calibration_flask*", "PyCamCalib.test*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jpg"]
@@ -23,9 +26,10 @@ authors = [
 description = "PyCamCalib: Python library for camera and stereo calibration."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -34,10 +38,29 @@ dependencies = [
   'matplotlib',
   'numpy',
   "opencv-contrib-python>=4.11.0.86",
-  'opencv-python',
+  'PyCBD',
+  'CTPv',
+]
+
+[project.optional-dependencies]
+gui = [
   'pyqtgraph',
   'PySide6',
 ]
+web = [
+  'flask',
+  'gunicorn',
+]
+
+[dependency-groups]
+dev = [
+  'build',
+  'Sphinx',
+  'sphinx-rtd-theme',
+  'sphinx-autodoc-typehints',
+]
 
 [project.urls]
-"Homepage" = "https://bitbucket.org/MichaelHillen/calibration_toolbox_python/src/distribution/"
+"Homepage" = "https://github.com/InViLabUAntwerp/PyCamCalib"
+"Repository" = "https://github.com/InViLabUAntwerp/PyCamCalib"
+"Issues" = "https://github.com/InViLabUAntwerp/PyCamCalib/issues"

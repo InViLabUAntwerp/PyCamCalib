@@ -8,14 +8,8 @@ import matplotlib.pyplot as plt
 import json
 import os
 import copy
-try:
-    from CTPv.Plucker.Line import Line
-except:
-    from core_toolbox_python.Plucker.Line import Line
-try:
-    from CTPv.Transformation.TransformationMatrix import TransformationMatrix
-except:
-    from core_toolbox_python.Transformation.TransformationMatrix import TransformationMatrix
+from CTPv.Plucker.Line import Line
+from CTPv.Transformation.TransformationMatrix import TransformationMatrix
 import matplotlib
 
 
@@ -528,7 +522,7 @@ if __name__ == "__main__":
     import time
     start = time.time()
 
-    from core_toolbox_python.Plucker.Line import *
+    from CTPv.Plucker.Line import *
 
     p, d = intersection_between_2_lines(rays, rayst)
     print("elapsed time: ", time.time() - start)

@@ -6,8 +6,36 @@ __pycache__/
 # JetBrains IDE
 .idea/
 
+# Virtual environments (uv)
+.venv/
+venv/
+
+# graphify knowledge graph output
+graphify-out/
+
+# Claude Code local files
+.claude/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime data and uploads
+uploads/
+src/PyCamCalib/camera_calibration_flaskv2/data/
+
 docs/build/
 docs/source/_autosummary
 
 dist/
+build/
 *.egg-info
