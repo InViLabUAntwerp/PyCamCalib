@@ -58,6 +58,11 @@ jobs:
           name: dist
           path: dist
 
+      # open3d (pulled in by CTPv) needs libEGL/libGL at import time; the runner image lacks them.
+      - name: Install system libraries for open3d (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1
+
       - name: Core install imports without Qt
         shell: bash
         run: |
